@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from viz_tools import animate_trajectories_box
-from nak_torch.algorithms import grad_aldi, eks, gradfree_aldi, cbs, msip, kfrflow, deepensembles
+from nak_torch.algorithms import grad_aldi, eks, gradfree_aldi, cbs, msip, msip_gs, kfrflow, deepensembles
 from nak_torch.algorithms.msip import MSIPFredholm, MSIPQuadGradientInformed, MSIPQuadGradientFree
 from torch import nn
 import random
@@ -12,6 +12,156 @@ from datetime import datetime
 import torch.nn.functional as F
 from torch.func import functional_call
 from collections import OrderedDict
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# KSD computation
+# ══════════════════════════════════════════════════════════════════════════════
+
+def rbf_stein_kernel(x_i, x_j, score_i, score_j, h=None):
+    """
+    Computes the Stein kernel matrix element k_p(x_i, x_j) using an RBF base kernel.
+
+    k_p(x_i, x_j) = score_i · score_j · k(x_i, x_j)
+                  + score_i · ∇_{x_j} k(x_i, x_j)
+                  + ∇_{x_i} k(x_i, x_j) · score_j
+                  + Tr(∇_{x_i} ∇_{x_j} k(x_i, x_j))
+
+    Parameters
+    ----------
+    x_i, x_j   : (D,) tensors   particle positions
+    score_i     : (D,) tensor   ∇ log p(x_i)
+    score_j     : (D,) tensor   ∇ log p(x_j)
+    h           : float         bandwidth (None → median heuristic)
+
+    Returns
+    -------
+    scalar tensor
+    """
+    diff = x_i - x_j                          # (D,)
+    sq   = (diff ** 2).sum()                  # scalar
+
+    if h is None:
+        h = diff.numel()                       # fallback; median computed outside
+    k_val  = torch.exp(-sq / (2 * h))         # k(x_i, x_j)
+
+    # ∇_{x_j} k  =  (diff / h) * k
+    grad_k_xj =  (diff / h)  * k_val          # (D,)
+    # ∇_{x_i} k  = -(diff / h) * k
+    grad_k_xi = -(diff / h)  * k_val          # (D,)
+    # Tr(∇_{xi}∇_{xj} k)  — for RBF this is (D/h - sq/h²) * k
+    lap = (diff.numel() / h - sq / h ** 2) * k_val   # scalar
+
+    term1 = (score_i * score_j).sum() * k_val
+    term2 = (score_i * grad_k_xj).sum()
+    term3 = (grad_k_xi * score_j).sum()
+    term4 = lap
+
+    return term1 + term2 + term3 + term4
+
+
+def compute_ksd(particles, log_density_grad_val, h=None):
+    """
+    Computes the U-statistic estimate of the KSD² given a particle set.
+
+
+    Parameters
+    ----------
+    particles           : (N, D) tensor  current particles
+    log_density_grad_val: callable       returns (grad, val) per particle
+                                         e.g. torch.func.grad_and_value(obj)
+    h                   : float or None  RBF bandwidth; None → median heuristic
+
+    Returns
+    -------
+    float  KSD² estimate 
+    """
+    particles = particles.detach()
+    N, D = particles.shape
+
+    # Compute scores: ∇ log p(x_i)  for all particles
+    scores = []
+    for i in range(N):
+        g, _ = log_density_grad_val(particles[i])
+        scores.append(g.detach())
+    scores = torch.stack(scores)               # (N, D)
+
+    # Median heuristic for bandwidth
+    if h is None:
+        h= 1.0
+        # with torch.no_grad():
+        #     dists = torch.cdist(particles, particles)  # (N, N)
+        #     median_sq = dists[dists > 0].median() ** 2
+        #     h = (median_sq / (2 * torch.log(torch.tensor(N + 1, dtype=torch.double)))).item()
+        #     h = max(h, 1e-6)                   # numerical floor
+
+    # U-statistic: average over off-diagonal pairs
+    ksd2 = 0.0
+    count = 0
+    for i in range(N):
+        for j in range(N):
+            if i == j:
+                continue
+            ksd2 += rbf_stein_kernel(
+                particles[i], particles[j],
+                scores[i],    scores[j],
+                h=h
+            ).item()
+            count += 1
+
+    return ksd2 / count if count > 0 else 0.0
+
+
+def compute_ksd_along_trajectory(trajectory, log_density_grad_val,
+                                  subsample=1, h=None):
+    """
+    Evaluates KSD² at every (subsampled) step of a trajectory.
+
+    Parameters
+    ----------
+    trajectory          : (T, N, D) tensor
+    log_density_grad_val: callable       grad_and_value of log density
+    subsample           : int            evaluate every `subsample` steps
+    h                   : float or None  bandwidth (None → median heuristic per step)
+
+    Returns
+    -------
+    steps : list[int]   iteration indices
+    ksds  : list[float] KSD² values
+    """
+    T = trajectory.shape[0]
+    steps, ksds = [], []
+    for t in range(0, T, subsample):
+        ksd_val = compute_ksd(trajectory[t], log_density_grad_val, h=h)
+        steps.append(t)
+        ksds.append(ksd_val)
+        print(f"  KSD² step {t:4d}: {ksd_val:.6f}")
+    return steps, ksds
+
+
+def plot_ksd_curves(ksd_results_dict):
+    """
+    Plots KSD over iterations for multiple algorithms.
+
+    Parameters
+    ----------
+    ksd_results_dict : dict  {name: (steps, ksds)}
+    """
+    fig, ax = plt.subplots(figsize=(8, 4))
+    for name, (steps, ksds) in ksd_results_dict.items():
+        ax.semilogy(steps, ksds, lw=2, label=name)
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("KSD² (log scale)")
+    ax.set_title("Kernelized Stein Discrepancy over training")
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig("ksd_curves.pdf")
+    plt.show()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -334,14 +484,15 @@ if __name__ == "__main__":
     HIDDEN_DIM   = 25        
     N_LAYERS     = 1          
     N_TRAIN      = 0.8        # train-test split ratio
-    N_PARTICLES  = 20
-    N_STEPS      = 5
+    N_PARTICLES  = 10
+    N_STEPS      = 500
     BETA         = 1.0        # beta in x-> exp(-beta^{-1}V(x))
     LAMBDA2      = 0.00005        # lambda in prior;0005
                               # lambda close to 0 means weak prior
-    LR_SVGD      = 10e-2
-    LR_MSIP      = 10e-2
-    SIGMA        = 2.5
+    LR_SVGD      = 50e-2
+    LR_MSIP      = 50e-2
+    SIGMA        = 1.0
+    GRADIENT_DECAY = 1.0
 
     # Data loading
     X_train, Y_train, X_test, Y_test = load_dataset(
@@ -363,7 +514,7 @@ if __name__ == "__main__":
     # Run MSIP
     post_log_dens_grad_val = torch.func.vmap(torch.func.grad_and_value(obj_msip))
     
-    def mc_quad_rule(batch_size: int, N_quad: int = 100, dim: int = dimension):
+    def mc_quad_rule(batch_size: int, N_quad: int = 5, dim: int = dimension):
         #dim = dimension
         pts = torch.randn((batch_size, N_quad, dim)).double()
         wts = torch.ones((batch_size, N_quad)).div_(N_quad).double()
@@ -376,8 +527,9 @@ if __name__ == "__main__":
     # gradient_decay = 1.
     msip_quadgrad = MSIPQuadGradientInformed(
         post_log_dens_grad_val, mc_quad_rule,
-        0.5
+        GRADIENT_DECAY
     )
+    
     
     # trajectories_msip_qg, traj_wts_msip_qg = msip(
     #     msip_quadgrad, n_particles, n_steps, dim=2,
@@ -394,7 +546,7 @@ if __name__ == "__main__":
     # msip_fredholm          = MSIPFredholm(1.0, post_log_dens_grad_val)
 
 
-    trajectories_msip_qg, wts_msip_qg = msip(
+    trajectories_msip_qg, wts_msip_qg = msip_gs(
         msip_quadgrad, N_PARTICLES, N_STEPS, dim=dimension,
         lr=LR_MSIP, init_particles=init_particles,
         kernel_length_scale=SIGMA, is_log_density_batched=True,
@@ -429,3 +581,25 @@ if __name__ == "__main__":
     # Evaluation on a dataset
     evaluate(trajectories_dict, objective_fns_dict, X_train, Y_train, "train")
     evaluate(trajectories_dict, objective_fns_dict, X_test,  Y_test,  "test")
+    
+    
+    
+    # KSD diagnostics ───────────────────────────────────────────────────────
+    score_fn_msip = torch.func.grad_and_value(obj_msip)
+    score_fn_de   = torch.func.grad_and_value(obj_de)
+
+    print("\nComputing KSD along MSIP trajectory...")
+    steps_msip, ksds_msip = compute_ksd_along_trajectory(
+        trajectories_msip_qg, score_fn_msip, subsample=1, h = 10.0
+    )
+
+    print("\nComputing KSD along DE trajectory...")
+    steps_de, ksds_de = compute_ksd_along_trajectory(
+        trajectories_de, score_fn_de, subsample=1, h = 10.0
+    )
+
+    ksd_results = {
+        "MSIP": (steps_msip, ksds_msip),
+        "DE":   (steps_de,   ksds_de),
+    }
+    plot_ksd_curves(ksd_results)
