@@ -692,16 +692,16 @@ if __name__ == "__main__":
     # Config
     DATASET = 'two_bananas'
     MODEL_CLASS = 'bnn'
-    HIDDEN_DIM = 25
+    HIDDEN_DIM = 50
     N_LAYERS = 1
     N_TRAIN = 0.8
-    N_PARTICLES = 10
+    N_PARTICLES = 20
     N_STEPS = 1000
     BETA = 1.0
     LAMBDA2 = 0.00005
-    LR_SVGD = 10e-2
-    LR_MSIP = 10e-2
-    SIGMA = 2.0
+    LR_SVGD = 50e-2
+    LR_MSIP = 50e-2
+    SIGMA = 1.0
     GRADIENT_DECAY = 1.0
 
     # Data loading
@@ -743,8 +743,8 @@ if __name__ == "__main__":
     msip_quadgrad = MSIPQuadGradientInformed(
         post_log_dens_grad_val, mc_quad_rule, GRADIENT_DECAY
     )
-
-    trajectories_msip_qg, wts_msip_qg = msip_gs(
+    #msip_gs
+    trajectories_msip_qg, wts_msip_qg = msip(
         msip_quadgrad, N_PARTICLES, N_STEPS, dim=dimension,
         lr=LR_MSIP, init_particles=init_particles,
         kernel_length_scale=SIGMA, is_log_density_batched=True,
@@ -791,9 +791,9 @@ if __name__ == "__main__":
     eval_function_trajectories(obj_de, trajectories_de, "DE")
 
     # Visualization
-    # plot_boundaries(trajectories_dict, objective_fns_dict, X_train, Y_train)
-    # plot_mean_prediction(trajectories_dict, objective_fns_dict, X_train, Y_train)
-    # plot_diversity_curve(trajectories_dict)
+    plot_boundaries(trajectories_dict, objective_fns_dict, X_train, Y_train)
+    plot_mean_prediction(trajectories_dict, objective_fns_dict, X_train, Y_train)
+    plot_diversity_curve(trajectories_dict)
 
     # Evaluation on a dataset
     evaluate(trajectories_dict, objective_fns_dict, X_train, Y_train, "train")
