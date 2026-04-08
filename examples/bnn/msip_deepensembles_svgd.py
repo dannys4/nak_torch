@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from viz_tools import animate_trajectories_box
+
 from nak_torch.algorithms import grad_aldi, eks, gradfree_aldi, cbs, msip, msip_gs, kfrflow, deepensembles, svgd
 from nak_torch.algorithms.msip import MSIPFredholm, MSIPQuadGradientInformed, MSIPQuadGradientFree
 from torch import nn
@@ -735,7 +735,7 @@ if __name__ == "__main__":
     # Run MSIP
     post_log_dens_grad_val = torch.func.vmap(torch.func.grad_and_value(obj_msip))
 
-    def mc_quad_rule(batch_size: int, N_quad: int = 50, dim: int = dimension):
+    def mc_quad_rule(batch_size: int, N_quad: int = 5, dim: int = dimension):
         pts = torch.randn((batch_size, N_quad, dim)).double()
         wts = torch.ones((batch_size, N_quad)).div_(N_quad).double()
         return pts, wts
@@ -744,7 +744,7 @@ if __name__ == "__main__":
         post_log_dens_grad_val, mc_quad_rule, GRADIENT_DECAY
     )
     #msip_gs
-    trajectories_msip_qg, wts_msip_qg = msip(
+    trajectories_msip_qg, wts_msip_qg = msip_gs(
         msip_quadgrad, N_PARTICLES, N_STEPS, dim=dimension,
         lr=LR_MSIP, init_particles=init_particles,
         kernel_length_scale=SIGMA, is_log_density_batched=True,
