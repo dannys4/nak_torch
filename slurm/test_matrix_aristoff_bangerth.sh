@@ -1,8 +1,9 @@
 #!/bin/sh
 
 #SBATCH -p mit_normal_gpu
-#SBATCH -c 32
+#SBATCH -c 8
 #SBATCH -G 1
+#SBATCH --mem=16G
 
 LR=0.5
 GRAD_ALDI_LR=1e-2
@@ -23,7 +24,7 @@ KERNEL_DIAG_INFL=1e-5
 BOUNDS="(-10;10)"
 
 curr_dir=$(pwd)
-my_dir=$(dirname -- "$( readlink -f -- "$0"; )")
+my_dir=/home/dannys4/git-repos/nak_torch/slurm #$(dirname -- "$( readlink -f -- "$0"; )")
 
 cd $my_dir
 source ../.venv/bin/activate
@@ -35,4 +36,3 @@ source ../.venv/bin/activate
     bounds=$BOUNDS grad_aldi_lr=$GRAD_ALDI_LR gradfree_aldi_lr=$GRADFREE_ALDI_LR \
     inner_quad=$INNER_QUAD inner_quad_N_spherical=$INNER_QUAD_N_SPHERICAL
 
-cd $curr_dir
