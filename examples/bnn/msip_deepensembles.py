@@ -16,7 +16,7 @@ if __name__ == "__main__":
     N_LAYERS     = 1
     N_TRAIN      = 0.8        # train-test split ratio
     N_PARTICLES  = 250
-    N_STEPS      = 500
+    N_STEPS      = 50
     BETA         = 1.0        # beta in x-> exp(-beta^{-1}V(x))
     LAMBDA2      = 0.00005        # lambda in prior;0005
                               # lambda close to 0 means weak prior
