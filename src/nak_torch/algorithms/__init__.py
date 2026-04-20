@@ -10,7 +10,7 @@
 from .eks import eks
 from .msip import msip, msip_gs, msip_ni, msip_greedy, msip_geom_greedy, msip_adapt
 from .svgd import svgd
-from .sgd_batch_svgd import sgd_svgd
+from .sgd_svgd import sgd_svgd
 from .deepensembles import deepensembles
 from .grad_aldi import grad_aldi
 from .gradfree_aldi import gradfree_aldi

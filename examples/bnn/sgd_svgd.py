@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     N_PARTICLES  = 50
     N_STEPS      = 500          # full-batch SVGD iterations
-    N_EPOCHS     = 500           # SGD-SVGD epochs
+    N_EPOCHS     = 100           # SGD-SVGD epochs
     BATCH_SIZE   = 64
 
     BETA         = 1.0
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     # ─────────────────────────────────────────────────────────────
     # Split objective for SGD-SVGD
     # ─────────────────────────────────────────────────────────────
-    log_prior, _ = make_sgd_logprior(
+    log_prior= make_sgd_logprior(
         X_train, Y_train,
         model_class=MODEL_CLASS,
         hidden_dim=HIDDEN_DIM,

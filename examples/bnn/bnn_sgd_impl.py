@@ -40,33 +40,6 @@ class bnn(nn.Module):
         return self.net(xb).squeeze(-1)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Dataset loading with train-test splitting
-# ══════════════════════════════════════════════════════════════════════════════
-
-def load_dataset(dataset_name, train_ratio=0.8, seed=0):
-    """
-    Loads  datasets/{dataset_name}.npz  (keys X: (d,N), Y: (1,N))
-    and splits into train / test.
-
-    Returns X_train, Y_train, X_test, Y_test as torch.double tensors
-    with shapes (N, d) and (N,)
-    """
-    data  = np.load(f"datasets/{dataset_name}.npz")
-    X = torch.from_numpy(data["X"].T).double()
-    Y = torch.from_numpy(data["Y"].T).double().squeeze()
-
-    N_total = X.shape[0]
-    rng     = np.random.RandomState(seed)
-    idx     = rng.permutation(N_total)
-    n_train = int(N_total * train_ratio)
-
-    i_train, i_test = idx[:n_train], idx[n_train:]
-
-    return X[i_train], Y[i_train], X[i_test], Y[i_test]
-
-
-#def dataloader_dataset(dataset_name)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -118,13 +91,6 @@ def make_sgd_logprior(X, Y, model_class='bnn',
         #reg        = lambda2 * (theta_1d ** 2).sum()
         return - (lambda2 / beta) * (theta_1d ** 2).sum()
 
-    def log_likelihood_single_theta(theta_1d):
-        param_dict = theta_to_param_dict(theta_1d)
-        pred       = functional_call(model, (param_dict, buffer_dict), (X,))
-        pred       = pred.squeeze()
-        data_loss  = soft_margin_loss(pred, Y)
-        
-        return -data_loss / beta
 
     def log_prior(theta):
         if theta.ndim == 1:
@@ -136,22 +102,6 @@ def make_sgd_logprior(X, Y, model_class='bnn',
             raise ValueError(f"theta must be 1D or 2D, got {theta.shape}")
 
     
-    def log_likelihood(theta):
-        if theta.ndim == 1:
-            return log_likelihood_single_theta(theta)
-        elif theta.ndim == 2:
-            return torch.stack([log_likelihood_single_theta(theta[i])
-                                for i in range(theta.shape[0])])
-        else:
-            raise ValueError(f"theta must be 1D or 2D, got {theta.shape}")
-    
-
-
-    log_likelihood.total_numel = total_numel
-    log_likelihood.model_class = model_class
-    log_likelihood.model       = model
-    log_likelihood.param_info  = param_info
-    log_likelihood.buffer_dict = buffer_dict
     
     log_prior.total_numel = total_numel
     log_prior.model_class = model_class
@@ -159,7 +109,7 @@ def make_sgd_logprior(X, Y, model_class='bnn',
     log_prior.param_info  = param_info
     log_prior.buffer_dict = buffer_dict
 
-    return log_prior, log_likelihood
+    return log_prior
 
 
 
@@ -195,7 +145,7 @@ def log_likelihood_batch_factory(
             pred = functional_call(model, (param_dict, buffer_dict), (X_batch,))
             pred = pred.squeeze()
 
-            # unbiased full-data scaling
+            
             return -(N_total / batch_size) * soft_margin_loss(pred, Y_batch) / beta
 
         def log_likelihood(theta):
