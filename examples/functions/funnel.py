@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import torch._dynamo
+torch._dynamo.disable()
 from torch import Tensor
 from dataclasses import dataclass
 from functools import partial
@@ -39,18 +41,40 @@ def sample_factory(dim: int, **funnel_kwargs)->Callable[[torch.Generator, int], 
 
     return sampler
 
+# if __name__ == '__main__':
+#     import matplotlib.pyplot as plt
+#     N_plt = 1000
+#     x = y = torch.linspace(-3, 3, N_plt)
+#     X,Y = torch.meshgrid(x, y, indexing='ij')
+#     grid = torch.column_stack((X.flatten(), Y.flatten()))
+#     out_like = funnel_logpdf_full(grid).reshape(N_plt, N_plt)
+#     sig_pr = 2
+#     out_pr = -(X**2 + Y**2) / (2*sig_pr**2)
+#     out = out_like + out_pr
+#     plt.contourf(X, Y, out.exp(), levels=20)
+#     plt.gca().set_aspect(1.0)
+#     plt.show()
+#     samps = sample(torch.default_generator, 10000)
+#     print(samps.T.cov())
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     N_plt = 1000
+    dim = 2
+    data = FunnelData(dim=dim)
+    sample = sample_factory(dim=dim)
+
     x = y = torch.linspace(-3, 3, N_plt)
-    X,Y = torch.meshgrid(x, y, indexing='ij')
+    X, Y = torch.meshgrid(x, y, indexing='ij')
     grid = torch.column_stack((X.flatten(), Y.flatten()))
-    out_like = logpdf(grid).reshape(N_plt, N_plt)
+
+    out_like = funnel_logpdf_full(data, grid).reshape(N_plt, N_plt)
     sig_pr = 2
-    out_pr = -(X**2 + Y**2) / (2*sig_pr**2)
+    out_pr = -(X**2 + Y**2) / (2 * sig_pr**2)
     out = out_like + out_pr
+
     plt.contourf(X, Y, out.exp(), levels=20)
     plt.gca().set_aspect(1.0)
     plt.show()
+
     samps = sample(torch.default_generator, 10000)
     print(samps.T.cov())
