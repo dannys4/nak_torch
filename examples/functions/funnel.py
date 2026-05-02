@@ -25,6 +25,33 @@ def funnel_logpdf_full(data: FunnelData, x: Tensor):
     logpdf_x2_end = x2_end.square().sum(-1).divide_(exp_x1).add_(np.log(2 * np.pi)).add_((data.dim - 1) * x1)
     return -0.5 * (logpdf_x1 + logpdf_x2_end)
 
+
+
+# def funnel_logpdf_full(data: FunnelData, x: Tensor):
+#     x1 = x[..., 0]
+#     x_rest = x[..., 1:]
+
+#     logpdf_x1 = x1.square() / data.x1_var + np.log(2 * np.pi * data.x1_var)
+
+#     zero = torch.zeros((), dtype=x.dtype, device=x.device)
+
+#     log_terms = torch.where(
+#         x_rest == 0,
+#         torch.full_like(x_rest, -torch.inf),
+#         2.0 * torch.log(torch.abs(x_rest)) - x1[..., None],
+#     )
+
+#     quad_rest = torch.exp(torch.logsumexp(log_terms, dim=-1))
+
+#     logpdf_rest = (
+#         quad_rest
+#         + (data.dim - 1) * np.log(2 * np.pi)
+#         + (data.dim - 1) * x1
+#     )
+
+#     return -0.5 * (logpdf_x1 + logpdf_rest)
+
+
 def logpdf_factory(dim: int, **funnel_kwargs) -> Callable[[Tensor], Tensor]:
     if dim < 2:
         raise ValueError(f"Expected parameter dim > 1. Got {dim}")

@@ -86,12 +86,12 @@ ref_samples = funnel_sampler(rng_ref, N_REF)
 # ── Shared hyper-parameters ───────────────────────────────────────────────────
 
 n_steps = 5000
-n_particles = 10
+n_particles = 100
 
 lr = 0.01
-lr_msip = 0.01
+lr_msip = 0.4
 
-kernel_length_scale = 1.0
+kernel_length_scale = 0.1
 kernel_diag_infl = 1e-6
 gradient_decay = 1.0
 bounds = (-1000.0, 1000.0)
@@ -415,8 +415,8 @@ for step_idx in steps_recorded:
         pts = traj[step_idx]
         wts = None
 
-        if name in algo_wts_trajs:
-            wts = algo_wts_trajs[name][step_idx]
+        #if name in algo_wts_trajs:
+        #    wts = algo_wts_trajs[name][step_idx]
 
         metrics[name]["cross_entropy"].append(
             cross_entropy_metric(pts, wts=wts).item()
@@ -447,8 +447,10 @@ print("KSD (IMQ) done.")
 def normalize_marker_weights(wts, min_size=10.0, max_size=80.0):
     w = torch.abs(wts.detach())
     w = w / (w.max() + 1e-30)
-    return min_size + (max_size - min_size) * w
-
+    n = w.shape[0]
+    w = (1/n)*torch.ones(n)
+    #return min_size + (max_size - min_size) * w
+    return w
 
 def plot_particles(ax, pts, wts=None, title=""):
     ax.scatter(
