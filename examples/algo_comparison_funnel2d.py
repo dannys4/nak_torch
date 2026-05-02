@@ -43,6 +43,8 @@ from nak_torch.algorithms.msip import (
 #    spherical_struct_radial_Laguerre,
 #)
 
+from nak_torch.tools.metrics import CrossEntropy
+
 from functions import funnel
 
 
@@ -64,6 +66,11 @@ DIM = 2
 funnel_log_density = funnel.logpdf_factory(DIM)
 funnel_sampler = funnel.sample_factory(DIM)
 
+cross_entropy_metric = CrossEntropy(
+    funnel_log_density,
+    is_log_dens_vectorized=True,
+)
+
 funnel_grad_val = torch.func.grad_and_value(funnel_log_density)
 funnel_grad_val_batch = torch.vmap(funnel_grad_val)
 
@@ -78,11 +85,11 @@ ref_samples = funnel_sampler(rng_ref, N_REF)
 
 # ── Shared hyper-parameters ───────────────────────────────────────────────────
 
-n_steps = 2
-n_particles = 5
+n_steps = 5000
+n_particles = 10
 
 lr = 0.1
-lr_msip = 0.1
+lr_msip = 0.9
 
 kernel_length_scale = 0.1
 kernel_diag_infl = 1e-6
@@ -326,7 +333,21 @@ algo_last_wts = {
     "MSIP-GS-QGF": traj_wts_msip_gs_qgf[-1],
 }
 
-metrics = {name: {"mmd": [], "ksd_rbf": [], "ksd_imq": []} for name in algo_trajs}
+
+algo_wts_trajs = {
+    "MSIP-Fredholm": traj_wts_msip_f,
+    "MSIP-QG": traj_wts_msip_qg,
+    "MSIP-GS-QG": traj_wts_msip_gs_qg,
+    "MSIP-QGF": traj_wts_msip_qgf,
+    "MSIP-GS-QGF": traj_wts_msip_gs_qgf,
+}
+
+#metrics = {name: {"mmd": [], "ksd_rbf": [], "ksd_imq": []} for name in algo_trajs}
+
+metrics = {
+    name: {"mmd": [], "ksd_rbf": [], "ksd_imq": [], "cross_entropy": []}
+    for name in algo_trajs
+}
 
 metric_every = 20
 steps_recorded = list(range(0, n_steps, metric_every))
@@ -416,6 +437,38 @@ for step_idx in steps_recorded:
         )
 print("MMD done.")
 
+# print("Computing cross entropy …")
+# for step_idx in steps_recorded:
+#     for name, traj in algo_trajs.items():
+#         pts = traj[step_idx]
+#         wts = None
+
+#         # Use MSIP weights when available.
+#         if name in algo_last_wts:
+#             # Careful: this only uses final weights.
+#             # Better version below if you store full weight trajectories.
+#             wts = algo_last_wts[name]
+
+#         metrics[name]["cross_entropy"].append(
+#             cross_entropy_metric(pts, wts=wts).item()
+#         )
+# print("Cross entropy done.")
+
+
+print("Computing cross entropy …")
+for step_idx in steps_recorded:
+    for name, traj in algo_trajs.items():
+        pts = traj[step_idx]
+        wts = None
+
+        if name in algo_wts_trajs:
+            wts = algo_wts_trajs[name][step_idx]
+
+        metrics[name]["cross_entropy"].append(
+            cross_entropy_metric(pts, wts=wts).item()
+        )
+print("Cross entropy done.")
+
 print("Computing KSD (RBF) …")
 for step_idx in steps_recorded:
     for name, traj in algo_trajs.items():
@@ -493,6 +546,18 @@ for name, traj in algo_trajs.items():
     plt.close()
     print(f"Saved {fname}")
 
+fig, ax = plt.subplots(figsize=(9, 5))
+for name in algo_trajs:
+    ax.plot(steps_recorded, metrics[name]["cross_entropy"], label=name)
+
+ax.set_xlabel("Iteration")
+ax.set_ylabel("Cross entropy  -E_mu[log pi]")
+ax.set_title("Funnel: cross entropy vs iteration")
+ax.legend(fontsize=8, ncol=2)
+plt.tight_layout()
+plt.savefig(f"funnel_cross_entropy_all_algorithms_sigma_{kernel_length_scale}.pdf")
+plt.close()
+print(f"Saved funnel_cross_entropy_all_algorithms_sigma_{kernel_length_scale}.pdf")
 
 fig, ax = plt.subplots(figsize=(9, 5))
 for name in algo_trajs:
@@ -531,6 +596,7 @@ plt.tight_layout()
 plt.savefig(f"funnel_KSD_IMQ_all_algorithms_sigma_{kernel_length_scale}.pdf")
 plt.close()
 print(f"Saved funnel_KSD_IMQ_all_algorithms_sigma_{kernel_length_scale}.pdf")
+
 
 
 print("All done.")
