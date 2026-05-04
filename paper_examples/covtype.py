@@ -1,61 +1,27 @@
+import os
 from typing import Optional
+from urllib.request import urlretrieve
 
 import torch
-from functions import build_aristoff_bangerth
-from nak_torch.algorithms import (
-    MSIP,
-    SVGD,
-    CBS,
-    EKS,
-    GradALDI,
-    GradFreeALDI,
-    DeepEnsembles,
-)
 
 from nak_torch.algorithms.msip import (
     MSIPFredholm,
-    MSIPQuadGradientInformed,
-    MSIPQuadGradientFree,
 )
 
 from nak_torch.tools.types import (
     BatchGradLogDensityEvaluator,
     BatchLogDensityEvaluator,
     DeviceLike,
+    LogisticRegressionModel,
 )
 from functions.defaults import (
     Defaults,
     Example,
-    GaussExample,
-    get_quadrule,
     run_example,
 )
 
-DIMENSION = 64
-
-# %%
-import os
-from urllib.request import urlretrieve
-import torch
-import nak_torch
-from nak_torch.algorithms import MSIP, MSIPGS, SVGD
-import matplotlib.pyplot as plt
-from nak_torch import LogisticRegressionModel
-from nak_torch.tools import pyro_tools
-from pyro.infer import mcmc
-from tqdm import tqdm
-
-from nak_torch.algorithms.msip import (
-    MSIPFredholm,
-    MSIPQuadGradientInformed,
-    MSIPQuadGradientFree,
-)
-
-from nak_torch.tools.quadrature import spherical_MC_radial_Laguerre
 import scipy.io
 import numpy as np
-
-from nak_torch.tools.types import BatchGradLogDensityEvaluator
 
 if torch.cuda.is_available():
     torch.set_default_device("cuda")
@@ -66,6 +32,7 @@ torch.set_default_dtype(torch.float64)
 # %%
 DATA_URL = "https://raw.githubusercontent.com/DartML/Stein-Variational-Gradient-Descent/refs/heads/master/data/covertype.mat"
 DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "covertype.npy")
+
 
 def download_file(data_url: str = DATA_URL, data_path: str = DATA_PATH):
     urlretrieve(data_url, data_path)
@@ -85,15 +52,28 @@ def download_file(data_url: str = DATA_URL, data_path: str = DATA_PATH):
 #     pred_labels = prob > 0.5
 #     return torch.mean((pred_labels == labels).to(torch.float64))
 
-def init_sample(N_samples: int, model: LogisticRegressionModel, rng: torch.Generator, device: Optional[DeviceLike] = None, dtype: Optional[torch.dtype] = None):
+
+def init_sample(
+    N_samples: int,
+    model: LogisticRegressionModel,
+    rng: torch.Generator,
+    device: Optional[DeviceLike] = None,
+    dtype: Optional[torch.dtype] = None,
+):
     prev_default_state = torch.default_generator.get_state()
     torch.default_generator.set_state(rng.get_state())
     alpha_init = model.hyperprior.sample((N_samples, 1))
     log_alpha_init = alpha_init.log()
     rng.set_state(torch.default_generator.get_state())
     torch.default_generator.set_state(prev_default_state)
-    coeff_init = torch.randn((N_samples, model.dim - 1), dtype=dtype, device=device, generator=rng) / alpha_init.sqrt()
+    coeff_init = (
+        torch.randn(
+            (N_samples, model.dim - 1), dtype=dtype, device=device, generator=rng
+        )
+        / alpha_init.sqrt()
+    )
     return torch.column_stack((coeff_init, log_alpha_init))
+
 
 class CovtypeLogreg(Example):
     lr: float = 1e-3
@@ -103,7 +83,7 @@ class CovtypeLogreg(Example):
         return True
 
     def name(self):
-        return "aristoff_bangerth"
+        return "blr_covtype"
 
     def init_particles(self, D: Defaults, device=None, dtype=None) -> torch.Tensor:
         return init_sample(D.n_particles, self.regression_model, self.rng)
@@ -121,15 +101,16 @@ class CovtypeLogreg(Example):
         if not os.path.isfile(DATA_PATH):
             download_file()
         regression_model = LogisticRegressionModel(
-            DATA_PATH, None, hyperprior_b=0.01,
-            train_proportion=0.8, reduction="mean"
+            DATA_PATH, None, hyperprior_b=0.01, train_proportion=0.8, reduction="mean"
         )
         self.regression_model = regression_model
         self.dim = regression_model.dim
         self.rng = rng
         log_p = regression_model.to_log_dens(use_compiled=use_compiled)
 
-        self.get_target_args_factory = lambda: iter(regression_model.get_data_loader(False, batch_size))
+        self.get_target_args_factory = lambda: iter(
+            regression_model.get_data_loader(False, batch_size)
+        )
         self.log_dens_evaluator = BatchLogDensityEvaluator(log_p, True)
         self.grad_log_dens_evaluator = BatchGradLogDensityEvaluator(log_p, False, True)
         self.target_msip_f = MSIPFredholm(
