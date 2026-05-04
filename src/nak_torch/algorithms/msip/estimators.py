@@ -2,6 +2,8 @@ import torch
 from abc import abstractmethod
 from nak_torch.tools.average import recursive_weighted_average_alpha_v
 from nak_torch.tools.types import (
+    LogDensity,
+    LogDensityGradVal,
     MSIPEstimatorOutput,
     BatchLogDensityGradVal,
     BatchLogDensity,
@@ -27,16 +29,50 @@ class MSIPEstimator(NAKTarget[MSIPEstimatorOutput]):
         ...
 
 
+AnyMSIPLogDens = (
+    BatchLogDensityGradVal | BatchLogDensity | LogDensity | LogDensityGradVal
+)
+
+
+def get_batch_log_dens_grad_val(
+    log_dens_or_grad_val: AnyMSIPLogDens, is_batched: bool, is_grad_val: bool
+) -> BatchLogDensityGradVal:
+    if is_batched and is_grad_val:
+        batch_log_dens_grad_val: BatchLogDensityGradVal = log_dens_or_grad_val  # type: ignore
+        return batch_log_dens_grad_val
+    if not is_batched and is_grad_val:
+        return torch.vmap(log_dens_or_grad_val, in_dims=(0, None))
+    if is_batched and not is_grad_val:
+        log_dens: BatchLogDensity = log_dens_or_grad_val  # type: ignore
+
+        def tmp_log_dens(t: Tensor, a=None):
+            ev = log_dens(t, a)
+            return ev.sum(), ev
+
+        return torch.func.grad(tmp_log_dens, has_aux=True)
+    return torch.vmap(
+        torch.func.grad_and_value(log_dens_or_grad_val), in_dims=(0, None)
+    )
+
+
 class MSIPFredholm(MSIPEstimator):
     # gamma > 0, constant decay on the gradient (i.e., multiplies grad)
     gradient_decay: float
     log_dens_grad_val: BatchLogDensityGradVal
 
     def __init__(
-        self, gradient_decay: float, log_dens_grad_val: BatchLogDensityGradVal, **kwargs
+        self,
+        gradient_decay: float,
+        log_dens_grad_val: AnyMSIPLogDens,
+        *_,
+        is_batched: bool = True,
+        is_grad_val: bool = True,
+        **kwargs,
     ):
         self.gradient_decay = gradient_decay
-        self.log_dens_grad_val = log_dens_grad_val
+        self.log_dens_grad_val = get_batch_log_dens_grad_val(
+            log_dens_grad_val, is_batched, is_grad_val
+        )
 
     def __call__(self, particles, kernel_lengthscale, target_args):
         grads, log_v0 = self.log_dens_grad_val(particles, target_args)

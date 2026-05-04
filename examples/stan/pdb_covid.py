@@ -98,7 +98,6 @@ trajectories_msip_fr = nak_torch.nak(
 trajectories_pts_msip_fr, trajectories_wts_msip_fr = trajectories_msip_fr
 
 # %%
-# %%
 target_svgd = BatchGradLogDensityEvaluator(
     stan_model.grad_log_dens_batch,
     is_grad=True,

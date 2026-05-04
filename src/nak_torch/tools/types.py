@@ -128,6 +128,7 @@ class GaussianModel(AbstractModel):
     prior_precision: float | Float[Tensor, "dim dim"]
     true_obs: Float | Float[Tensor, " obs"]
     prior_mean: float | Float[Tensor, " dim"]
+    dim: int
 
     def __init__(
         self,
@@ -137,6 +138,7 @@ class GaussianModel(AbstractModel):
         true_obs: Float | Float[Tensor, " obs"] = torch.zeros(()),
         prior_mean: float | Float[Tensor, " dim"] = 0.0,
         is_vectorized: bool = False,
+        dim: int = 0,
     ):
         batch_forward_model: BatchForwardModel
         if is_vectorized:
@@ -149,6 +151,15 @@ class GaussianModel(AbstractModel):
         self.prior_precision = prior_precision
         self.true_obs = true_obs
         self.prior_mean = prior_mean
+        if dim == 0:
+            if isinstance(prior_mean, Tensor):
+                self.dim = prior_mean.shape[0]
+            elif isinstance(prior_precision, Tensor):
+                self.dim = prior_precision.shape[0]
+            else:
+                self.dim = 1
+        else:
+            self.dim = dim
 
     def to_log_dens(self, use_compiled: bool = True) -> BatchLogDensity:
         def log_dens(pts: BatchPtType, aux_args: Any) -> BatchType:

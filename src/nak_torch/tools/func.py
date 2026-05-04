@@ -39,6 +39,7 @@ class GeneralAdaptiveNAKAlgorithm(ABC, Generic[NAKTargetT, WeightT, AlgorithmArg
         self.dtype = dtype
         self.verbose = verbose
         if verbose and len(kwargs) > 0:
+            assert False
             warnings.warn(f"Unused kwargs:\n{kwargs}")
 
     @abstractmethod

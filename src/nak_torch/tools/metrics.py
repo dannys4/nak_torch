@@ -34,7 +34,9 @@ __all__ = ["CrossEntropy", "KernelSteinDiscrepancy", "RelativeESS"]
 
 class Metric(ABC):
     @abstractmethod
-    def __call__(self, pts: BatchPtType, wts: Optional[BatchType] = None) -> Float:
+    def __call__(
+        self, pts: BatchPtType, wts: Optional[BatchType] = None, target_args=None
+    ) -> Float:
         pass
 
 
@@ -169,7 +171,7 @@ class KernelSteinDiscrepancy(Metric):
             use_compiled=use_compiled,
         )
 
-    def __call__(self, pts, wts=None):
+    def __call__(self, pts, wts=None, target_args=None):
         stein_mat = self.stein_kernel_mat(pts, self.kernel_length_scale)
         if wts is None:
             return stein_mat.mean().sqrt()
