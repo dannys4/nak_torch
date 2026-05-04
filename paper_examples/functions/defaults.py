@@ -73,7 +73,7 @@ class Example:
         return False
 
     def get_algorithms(self) -> list[str]:
-        ret = ["svgd", "msip_f", "msip_gi", "msip_gf", "cbs", "grad_aldi"]
+        ret = ["svgd", "msip_f", "msip_gi", "msip_gf", "cbs", "grad_aldi", "deepens"]
         if self.is_gauss_model():
             ret.extend(["eks", "gradfree_aldi"])
         return ret

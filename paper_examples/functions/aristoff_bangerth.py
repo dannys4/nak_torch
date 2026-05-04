@@ -11,8 +11,6 @@
 # Author: NAK torch authors, 2026
 #
 
-from functools import partial
-
 import torch
 from torch import Tensor
 from typing import Optional
