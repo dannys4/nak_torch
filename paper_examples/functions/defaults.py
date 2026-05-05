@@ -216,8 +216,14 @@ def run_example(
             warnings.warn(f"Problem assessing algorithm {alg_name}")
         return metric_evals, outputs
 
+    now_str = str(datetime.now()).replace(" ", "_").replace("-", "_")
+    parent_dir = os.path.join(os.path.dirname(filepath), "data")
+    fname = ex.name() + "_" + now_str + ".pkl"
+    output_path = os.path.join(parent_dir, "result", fname)
+
     all_init_particles = []
     for r in range(n_experiments):
+        print("\n\nStarting experiment {}\n\n".format(r))
         init_particles = ex.init_particles(D, dtype=dtype)
         all_init_particles.append(init_particles.numpy())
 
@@ -284,24 +290,20 @@ def run_example(
                 ex.gauss_model, ex.eks, init_particles, "eks", metric_evals, outputs
             )
 
-    outputs = {k: output_stack(v) for (k, v) in outputs.items() if len(v) > 0}
+        # Dump after each experiment in case things crash
+        outputs_save = {k: output_stack(v) for (k, v) in outputs.items() if len(v) > 0}
 
-    all_experiment_data = dict(
-        lr=lr,
-        init_particles=all_init_particles,
-        metrics=metric_evals,
-        hyperparams=D.__dict__,
-    )
+        all_experiment_data = dict(
+            lr=lr,
+            init_particles=all_init_particles,
+            metrics=metric_evals,
+            hyperparams=D.__dict__,
+        )
 
-    now_str = str(datetime.now()).replace(" ", "_").replace("-", "_")
-    parent_dir = os.path.join(os.path.dirname(filepath), "data")
-    fname = ex.name() + "_" + now_str + ".pkl"
-    output_path = os.path.join(parent_dir, "result", fname)
+        with open(output_path, "wb") as f:
+            pickle.dump(outputs_save, f)
 
-    with open(output_path, "wb") as f:
-        pickle.dump(outputs, f)
+        experiment_path = os.path.join(parent_dir, "experiment", fname)
 
-    experiment_path = os.path.join(parent_dir, "experiment", fname)
-
-    with open(experiment_path, "wb") as f:
-        pickle.dump(all_experiment_data, f)
+        with open(experiment_path, "wb") as f:
+            pickle.dump(all_experiment_data, f)

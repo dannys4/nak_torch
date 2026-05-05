@@ -1,27 +1,10 @@
-from typing import Optional
-
 import posteriordb
 import stan
 import torch
-from functions import build_aristoff_bangerth
-from nak_torch.algorithms import (
-    MSIP,
-    SVGD,
-    CBS,
-    EKS,
-    GradALDI,
-    GradFreeALDI,
-    DeepEnsembles,
-)
 
-from nak_torch.algorithms.msip import (
-    MSIPFredholm,
-    MSIPQuadGradientInformed,
-    MSIPQuadGradientFree,
-)
+from nak_torch.algorithms.msip import MSIPFredholm
 
 from nak_torch.tools import stan_tools
-from nak_torch.tools.pyro_tools import DeviceLike
 from nak_torch.tools.types import (
     BatchGradLogDensityEvaluator,
     BatchLogDensityEvaluator,
@@ -29,12 +12,12 @@ from nak_torch.tools.types import (
 from functions.defaults import (
     Defaults,
     Example,
-    get_quadrule,
     run_example,
 )
 
 
 DIMENSION = 10
+
 
 def create_schools_stan_model() -> stan_tools.StanModel:
     pdb = posteriordb.PosteriorDatabase()
@@ -62,8 +45,12 @@ class Schools(Example):
         assert stan_model.dim == DIMENSION
         self.dim = DIMENSION
         self.rng = rng
-        self.log_dens_evaluator = BatchLogDensityEvaluator(stan_model.log_dens_batch, True)
-        self.grad_log_dens_evaluator = BatchGradLogDensityEvaluator(stan_model.grad_log_dens_batch, True, True)
+        self.log_dens_evaluator = BatchLogDensityEvaluator(
+            stan_model.log_dens_batch, True
+        )
+        self.grad_log_dens_evaluator = BatchGradLogDensityEvaluator(
+            stan_model.grad_log_dens_batch, True, True
+        )
         grad_val = stan_model.grad_val_log_dens_batch
         self.target_msip_f = MSIPFredholm(
             D.gradient_decay, grad_val, is_batched=True, is_grad_val=True
@@ -71,13 +58,16 @@ class Schools(Example):
         super().__init__(D, device, dtype)
 
     def init_particles(self, D, device=None, dtype=None) -> torch.Tensor:
-        return torch.randn((D.n_particles, DIMENSION), generator=self.rng, device=device, dtype=dtype)
+        return torch.randn(
+            (D.n_particles, self.dim), generator=self.rng, device=device, dtype=dtype
+        )
+
 
 if __name__ == "__main__":
     # EXAMPLE SPECIFIC DEFAULTS
-    N_EXPERIMENTS = 1
-    SEED = 23802123
-    N_STEPS = 10
+    N_EXPERIMENTS = 20
+    SEED = 231239842
+    N_STEPS = 1000
     DTYPE = torch.float64
 
     D = Defaults(n_steps=N_STEPS)

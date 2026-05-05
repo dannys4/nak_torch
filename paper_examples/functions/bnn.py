@@ -13,6 +13,8 @@ from collections import OrderedDict
 
 from tqdm import tqdm
 
+from nak_torch.tools.types import DeviceLike
+
 # ══════════════════════════════════════════════════════════════════════════════
 # BNN model
 # ══════════════════════════════════════════════════════════════════════════════
@@ -55,7 +57,13 @@ class bnn(nn.Module):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def load_dataset(dataset_name, train_ratio=0.8, seed=0):
+def load_dataset(
+    dataset_name: str,
+    train_ratio: float,
+    rng: torch.Generator,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[DeviceLike] = None,
+):
     """
     Loads  datasets/{dataset_name}.npz  (keys X: (d,N), Y: (1,N))
     and splits into train / test.
@@ -63,14 +71,13 @@ def load_dataset(dataset_name, train_ratio=0.8, seed=0):
     Returns X_train, Y_train, X_test, Y_test as torch.double tensors
     with shapes (N, d) and (N,)
     """
-    data = np.load(f"datasets/{dataset_name}.npz")
-    X = torch.from_numpy(data["X"].T).double()
-    Y = torch.from_numpy(data["Y"].T).double().squeeze()
+    data = np.load(f"data/{dataset_name}.npz")
+    X = torch.from_numpy(data["X"].T).to(dtype=dtype, device=device)
+    Y = torch.from_numpy(data["Y"].T).to(dtype=dtype, device=device).squeeze()
 
     N_total = X.shape[0]
-    rng = np.random.RandomState(seed)
-    idx = rng.permutation(N_total)
     n_train = int(N_total * train_ratio)
+    idx = torch.randperm(N_total, generator=rng)
 
     i_train, i_test = idx[:n_train], idx[n_train:]
 
@@ -103,6 +110,97 @@ def soft_margin_loss(x, y):
 
 soft_margin_v = torch.vmap(soft_margin_loss, in_dims=(0, None))
 
+def multi_label_soft_margin_01(x, y):
+    return F.multilabel_soft_margin_loss(x, y)
+
+multi_label_soft_margin_01_v = torch.vmap(multi_label_soft_margin_01, in_dims=(0, None))
+
+class BNNPosterior:
+    """
+    A log-posterior for Bayesian neural networks
+
+    Parameters
+    ----------
+    data, labels : torch.double tensors  (N, d) and (N,)
+    model_class  : 'bnn' for now, but we can think about something else
+    hidden_dim   : int   hidden width
+    n_layers     : int   depth
+    beta         : float temperature
+    weight_decay : float prior weight
+    """
+
+    model: bnn
+    param_info: list[tuple[str, torch.Size, int]]
+
+    def __init__(
+        self,
+        data_tuple: tuple[Float[Tensor, "N_samples *"], ...],
+        hidden_dim: int = 10,
+        n_layers: int = 1,
+        beta: float = 1.0,
+        weight_decay: float = 0.01,
+    ):
+        self.data_tuple = data_tuple
+        data = data_tuple[0] if isinstance(data_tuple, tuple) else data_tuple
+        self.beta = beta
+        self.lambda2 = weight_decay
+        d = data.shape[1]
+        self.model = bnn(d_in=d, hidden_dim=hidden_dim, n_layers=n_layers).double()
+        self.param_info = [
+            (name, p.shape, p.numel()) for name, p in self.model.named_parameters()
+        ]
+        self.buffer_dict = OrderedDict(self.model.named_buffers())
+        self.dimension = sum(nu for _, _, nu in self.param_info)
+
+    def __repr__(self):
+        return (
+            f"  Model   : BNNClassifierPosterior  |  "
+            f"hidden_dim = {self.model.hidden_dim}  n_layers = {self.model.n_layers}  |  "
+            f"dim(theta) = {self.dimension}"
+        )
+
+    def __call__(
+        self, theta: Tensor, data_labels: Optional[tuple[Tensor, Tensor]] = None
+    ):
+        single_theta = theta.ndim == 1
+        if single_theta:
+            theta = theta.unsqueeze(0)
+        elif theta.ndim > 2:
+            raise ValueError(f"theta.ndim must be 1 or 2. Got {theta.ndim}")
+
+        if data_labels is None:
+            data, labels = self.data, self.labels
+        else:
+            data, labels = data_labels
+
+        pred: Tensor = bnn_evaluator_v(
+            theta, self.model, self.buffer_dict, self.param_info, data
+        )
+        data_loss = soft_margin_v(pred, labels) * self.data.shape[0]
+        reg = self.lambda2 * (theta**2).sum(-1)
+        # Post = -(soft_margin(theta) + lambda_2 ||theta||^2)
+        return data_loss.add_(reg).div_(-self.beta).squeeze_()
+
+    def get_data_loader(
+        self,
+        batch_size: int = 1,
+        shuffle: bool = False,
+        num_workers: int = 0,
+        *data_loader_args,
+        **data_loader_kwargs,
+    ):
+        import torch.utils.data as torch_data
+
+        data: torch_data.TensorDataset
+        data = torch_data.TensorDataset(self.data, self.labels)
+        return torch_data.DataLoader(
+            data,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            *data_loader_args,
+            **data_loader_kwargs,
+        )
 
 class BNNClassifierPosterior:
     """
@@ -147,6 +245,100 @@ class BNNClassifierPosterior:
             f"  Model   : BNNClassifierPosterior  |  "
             f"hidden_dim = {self.model.hidden_dim}  n_layers = {self.model.n_layers}  |  "
             f"dim(theta) = {self.dimension}"
+        )
+
+    def __call__(
+        self, theta: Tensor, data_labels: Optional[tuple[Tensor, Tensor]] = None
+    ):
+        single_theta = theta.ndim == 1
+        if single_theta:
+            theta = theta.unsqueeze(0)
+        elif theta.ndim > 2:
+            raise ValueError(f"theta.ndim must be 1 or 2. Got {theta.ndim}")
+
+        if data_labels is None:
+            data, labels = self.data, self.labels
+        else:
+            data, labels = data_labels
+
+        pred: Tensor = bnn_evaluator_v(
+            theta, self.model, self.buffer_dict, self.param_info, data
+        )
+        data_loss = soft_margin_v(pred, labels) * self.data.shape[0]
+        reg = self.lambda2 * (theta**2).sum(-1)
+        # Post = -(soft_margin(theta) + lambda_2 ||theta||^2)
+        return data_loss.add_(reg).div_(-self.beta).squeeze_()
+
+    def get_data_loader(
+        self,
+        batch_size: int = 1,
+        shuffle: bool = False,
+        num_workers: int = 0,
+        *data_loader_args,
+        **data_loader_kwargs,
+    ):
+        import torch.utils.data as torch_data
+
+        data: torch_data.TensorDataset
+        data = torch_data.TensorDataset(self.data, self.labels)
+        return torch_data.DataLoader(
+            data,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            *data_loader_args,
+            **data_loader_kwargs,
+        )
+
+class BNNMultiClassifierPosterior:
+    """
+    A log-posterior for BNN for classification
+
+    Parameters
+    ----------
+    data, labels : torch.double tensors  (N, d) and (N,)
+    model_class  : 'bnn' for now, but we can think about something else
+    hidden_dim   : int   hidden width
+    n_layers     : int   depth
+    beta         : float temperature
+    weight_decay : float prior weight
+    """
+
+    model: bnn
+    param_info: list[tuple[str, torch.Size, int]]
+    n_labels: int
+
+    def __init__(
+        self,
+        data: Float[Tensor, "N_samples dim"],
+        labels: Float[Tensor, " N_samples"],
+        hidden_dim: int = 10,
+        n_layers: int = 1,
+        beta: float = 1.0,
+        weight_decay: float = 0.01,
+        n_labels: int = 0,
+    ):
+        self.data = data
+        n_data, d = data.shape
+        if n_labels == 0:
+            n_labels = int(labels.max().item())
+        self.n_labels = n_labels
+        self.labels = torch.zeros((n_data, n_labels), dtype=torch.int32, device=data.device)
+        self.labels[torch.arange(n_data, device=data.device), labels].fill_(1.)
+        self.beta = beta
+        self.lambda2 = weight_decay
+        self.model = bnn(d_in=d, hidden_dim=hidden_dim, n_layers=n_layers).double()
+        self.param_info = [
+            (name, p.shape, p.numel()) for name, p in self.model.named_parameters()
+        ]
+        self.buffer_dict = OrderedDict(self.model.named_buffers())
+        self.dimension = sum(nu for _, _, nu in self.param_info)
+
+    def __repr__(self):
+        return (
+            f"  Model   : BNNMultiClassifierPosterior  |  "
+            f"hidden_dim = {self.model.hidden_dim}  n_layers = {self.model.n_layers}  |  "
+            f"dim(theta) = {self.dimension}  n_labels = {self.n_labels}"
         )
 
     def __call__(
@@ -351,7 +543,7 @@ def plot_diversity_curve(trajectories_dict):
 def eval_function_trajectories(obj_fn, trajectories, algo_name):
     T, M, d = trajectories.shape
     eval_tensor = torch.zeros(T, M, dtype=trajectories.dtype)
-    prog = tqdm(total=T*M)
+    prog = tqdm(total=T * M)
     for t in range(T):
         for m in range(M):
             eval_tensor[t, m] = -obj_fn(trajectories[t, m, :], None)

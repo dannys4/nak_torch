@@ -23,6 +23,8 @@ from functions.defaults import (
 import scipy.io
 import numpy as np
 
+from nak_torch.tools.util import infinite_iter
+
 if torch.cuda.is_available():
     torch.set_default_device("cuda")
 else:
@@ -108,7 +110,7 @@ class CovtypeLogreg(Example):
         self.rng = rng
         log_p = regression_model.to_log_dens(use_compiled=use_compiled)
 
-        self.get_target_args_factory = lambda: iter(
+        self.get_target_args_factory = lambda: infinite_iter(
             regression_model.get_data_loader(False, batch_size)
         )
         self.log_dens_evaluator = BatchLogDensityEvaluator(log_p, True)
@@ -121,9 +123,9 @@ class CovtypeLogreg(Example):
 
 if __name__ == "__main__":
     # EXAMPLE SPECIFIC DEFAULTS
-    N_EXPERIMENTS = 1
+    N_EXPERIMENTS = 20
     SEED = 23802123
-    N_STEPS = 10
+    N_STEPS = 1000
     DTYPE = torch.float64
 
     D = Defaults(n_steps=N_STEPS)
