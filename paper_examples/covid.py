@@ -1,9 +1,6 @@
-from typing import Optional
-
 import posteriordb
 import stan
 import torch
-from functions import build_aristoff_bangerth
 from nak_torch.algorithms import (
     MSIP,
     SVGD,
@@ -21,7 +18,6 @@ from nak_torch.algorithms.msip import (
 )
 
 from nak_torch.tools import stan_tools
-from nak_torch.tools.pyro_tools import DeviceLike
 from nak_torch.tools.types import (
     BatchGradLogDensityEvaluator,
     BatchLogDensityEvaluator,
@@ -32,44 +28,6 @@ from functions.defaults import (
     get_quadrule,
     run_example,
 )
-
-
-# def covid_prior_sample(
-#     N_samples: int,
-#     M_y: int = 14,
-#     dtype: Optional[torch.dtype] = None,
-#     device: Optional[DeviceLike] = None,
-#     rng: Optional[torch.Generator] = None,
-# ):
-#     if rng is None:
-#         rng = torch.default_generator
-#     if dtype is None:
-#         dtype = torch.get_default_dtype()
-#     if device is None:
-#         device = torch.get_default_device()
-#     tau = (
-#         torch.empty((N_samples, 1), dtype=dtype, device=device)
-#         .exponential_(generator=rng)
-#         .div_(0.03)
-#     )
-#     y = (
-#         torch.empty((N_samples, M_y), dtype=dtype, device=device)
-#         .exponential_(generator=rng)
-#         .div_(tau)
-#     )
-#     phi = torch.randn((N_samples, 1), generator=rng).mul_(5.0)
-#     kappa = torch.randn((N_samples, 1), generator=rng).mul_(0.5)
-#     mu = torch.randn((N_samples, M_y), generator=rng).mul_(kappa).add_(3.28)
-#     alpha_hier = torch._standard_gamma(
-#         torch.as_tensor(0.1667, dtype=dtype, device=device).expand(N_samples, 6),
-#         generator=rng,
-#     )
-#     ifr_noise = torch.randn((N_samples, M_y), generator=rng).mul_(0.1).add_(1.0)
-#     log_tau = tau.log_()
-#     log_alpha_hier = alpha_hier.log_()
-#     log_y = y.log_()
-#     return torch.column_stack((mu, log_alpha_hier, kappa, log_y, phi, log_tau, ifr_noise))
-
 
 DIMENSION = 51
 
@@ -105,37 +63,7 @@ class COVID(Example):
         self.target_msip_f = MSIPFredholm(
             D.gradient_decay, grad_val, is_batched=True, is_grad_val=True
         )
-        self.target_msip_gi = MSIPQuadGradientInformed(
-            grad_val,
-            get_quadrule(
-                D.quadrule,
-                d=DIMENSION,
-                **D.msip_gi_quadrule_kwargs,
-                device=device,
-                dtype=dtype,
-            ),
-            D.gradient_decay,
-        )
-        self.target_msip_gf = MSIPQuadGradientFree(
-            stan_model.log_dens_batch,
-            get_quadrule(
-                D.quadrule,
-                d=DIMENSION,
-                **D.msip_gf_quadrule_kwargs,
-                device=device,
-                dtype=dtype,
-            ),
-        )
-        all_kwargs = dict(
-            dim=DIMENSION, n_particles=D.n_particles, device=device, dtype=dtype
-        )
-        self.svgd = SVGD(**all_kwargs, **D.svgd_kwargs)
-        self.msip = MSIP(**all_kwargs, **D.msip_kwargs)
-        self.cbs = CBS(**all_kwargs, rng=rng, **D.cbs_kwargs)
-        self.deepens = DeepEnsembles(**all_kwargs)
-        self.eks = EKS(**all_kwargs, rng_or_seed=rng)
-        self.grad_aldi = GradALDI(**all_kwargs, rng=rng)
-        self.gradfree_aldi = GradFreeALDI(**all_kwargs, rng_or_seed=rng)
+        super().__init__(D, device, dtype)
     def init_particles(self, D, device=None, dtype=None) -> torch.Tensor:
         return torch.randn((D.n_particles, DIMENSION), generator=self.rng, device=device, dtype=dtype)
 
