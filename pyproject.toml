@@ -26,6 +26,7 @@ examples = [
     "pyro-ppl>=1.9.1",
     "pystan",
     "scipy>=1.17.1",
+    "torchvision>=0.25.0",
 ]
 
 [build-system]
