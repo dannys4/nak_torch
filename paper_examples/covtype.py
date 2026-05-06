@@ -94,10 +94,13 @@ class CovtypeLogreg(Example):
         self,
         rng: torch.Generator,
         D: Defaults,
+        *_,
         batch_size: int = 50,
         use_compiled: bool = True,
         device=None,
         dtype=None,
+        use_test: bool = False,
+        **kwargs
     ):
 
         if not os.path.isfile(DATA_PATH):
@@ -105,6 +108,8 @@ class CovtypeLogreg(Example):
         regression_model = LogisticRegressionModel(
             DATA_PATH, None, hyperprior_b=0.01, train_proportion=0.8, reduction="mean"
         )
+        if use_test:
+            regression_model.train_data, regression_model.train_labels = regression_model.test_data, regression_model.test_labels
         self.regression_model = regression_model
         self.dim = regression_model.dim
         self.rng = rng

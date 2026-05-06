@@ -20,14 +20,20 @@ def create_two_moons_bnn_model(
     n_layers: int = 1,
     hidden_dim: int = 50,
     beta: float = 1.0,
+    use_test: bool = False,
 ) -> bnn.BNNClassifierPosterior:
     DATASET = "two_bananas"
     data_train, labels_train, data_test, labels_test = bnn.load_dataset(
         DATASET, prop_train, rng, dtype, device
     )
+    if use_test:
+        data, labels = data_test, labels_test
+    else:
+        data, labels = data_train, labels_train
+
     return bnn.BNNClassifierPosterior(
-        data=data_train,
-        labels=labels_train,
+        data=data,
+        labels=labels,
         beta=beta,
         n_layers=n_layers,
         hidden_dim=hidden_dim,

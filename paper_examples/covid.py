@@ -52,6 +52,7 @@ class COVID(Example):
         D: Defaults,
         device=None,
         dtype=None,
+        **_
     ):
         stan_model = create_covid_stan_model()
         assert stan_model.dim == DIMENSION

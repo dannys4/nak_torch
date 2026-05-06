@@ -46,6 +46,7 @@ class AristoffBangerth(GaussExample):
         use_compiled: bool = True,
         device=None,
         dtype=None,
+        **_
     ):
         self.dim = DIMENSION
         self.rng = rng
@@ -64,7 +65,7 @@ class AristoffBangerth(GaussExample):
 if __name__ == "__main__":
     # EXAMPLE SPECIFIC DEFAULTS
     N_EXPERIMENTS = 1
-    SEED = 23802123
+    SEED = 23109231029
     N_STEPS = 1000
     DTYPE = torch.float64
 
