@@ -44,7 +44,7 @@ torch.set_default_dtype(torch.float64)
 # ══════════════════════════════════════════════════════════════════════════════
 
 M_VALUES  = [5, 10, 20, 50]
-R_RUNS    = 10
+R_RUNS    = 1
 N_STEPS   = 1000
 
 LR_SVGD   = 0.1
@@ -55,9 +55,9 @@ KERNEL_LS      = 0.5
 KERNEL_DIAG    = 1e-8
 GRADIENT_DECAY = 1.0
 BOUNDS_MSIP    = (-1000.0, 1000.0)
-N_QUAD         = 20
+N_QUAD         = 1
 
-INIT_MEAN = torch.tensor([8.0, 8.0])
+INIT_MEAN = torch.tensor([0.0, 0.0])
 INIT_STD  = 1.0
 BASE_SEED = 314159
 SIGMA_TAG = str(KERNEL_LS)
@@ -68,30 +68,59 @@ SIGMA_TAG = str(KERNEL_LS)
 
 gmm_weights = torch.tensor([1/5] * 5)
 
+# gmm_means = torch.stack([
+#     torch.tensor([ 6.2, -6.0]),
+#     torch.tensor([-4.0,  5.0]),
+#     torch.tensor([ 7.0,  3.0]),
+#     torch.tensor([-6.5, -4.5]),
+#     torch.tensor([ 1.0,  7.0]),
+# ])
+
+# gmm_covs = torch.stack([
+#     0.5 * torch.tensor([[1.5,  0.1],
+#                         [0.1,  0.5]]),
+
+#     0.5 * torch.tensor([[2.0, -0.6],
+#                         [-0.6, 0.5]]),
+
+#     0.5 * torch.tensor([[0.7,  0.4],
+#                         [0.4,  1.2]]),
+
+#     0.5 * torch.tensor([[1.3, -0.5],
+#                         [-0.5, 0.9]]),
+
+#     0.5 * torch.tensor([[0.6,  0.35],
+#                         [0.35, 1.6]]),
+# ])
+
+
 gmm_means = torch.stack([
-    torch.tensor([ 6.2, -6.0]),
-    torch.tensor([-4.0,  5.0]),
-    torch.tensor([ 7.0,  3.0]),
-    torch.tensor([-6.5, -4.5]),
-    torch.tensor([ 1.0,  7.0]),
+    2*torch.tensor([ 6.2, -6.0]),
+    2*torch.tensor([-4.0,  5.0]),
+    2*torch.tensor([ 7.0,  3.0]),
+    2*torch.tensor([-6.5, -4.5]),
+    2*torch.tensor([ 1.0,  7.0]),
 ])
 
 gmm_covs = torch.stack([
-    0.5 * torch.tensor([[1.5,  0.1],
+    torch.tensor([[1.5,  0.1],
                         [0.1,  0.5]]),
 
-    0.5 * torch.tensor([[2.0, -0.6],
+    torch.tensor([[2.0, -0.6],
                         [-0.6, 0.5]]),
 
-    0.5 * torch.tensor([[0.7,  0.4],
+    torch.tensor([[0.7,  0.4],
                         [0.4,  1.2]]),
 
-    0.5 * torch.tensor([[1.3, -0.5],
+    torch.tensor([[1.3, -0.5],
                         [-0.5, 0.9]]),
 
-    0.5 * torch.tensor([[0.6,  0.35],
+    torch.tensor([[0.6,  0.35],
                         [0.35, 1.6]]),
 ])
+
+
+
 
 gmm_precisions = torch.linalg.inv(gmm_covs)
 
@@ -349,7 +378,7 @@ def run_one(M: int, seed: int) -> dict:
 
     msip_qg = MSIPQuadGradientInformed(
         post_log_dens_grad_val_batch,
-        partial(spherical_quad, N_quad=N_QUAD),
+        partial(mc_quad_rule, N_quad=N_QUAD),
         GRADIENT_DECAY,
     )
     traj, wts = msip(
