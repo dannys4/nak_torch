@@ -55,7 +55,14 @@ def nak(
         n_particles, dim, init_particles, device, dtype, bounds, rng=rng
     )
 
-    particle_wts, algorithm_args = algorithm.initialize(particles, target, target_args)
+    if get_target_args is not None:
+        particle_wts, algorithm_args = algorithm.initialize(
+            particles, target, next(iter(get_target_args))
+        )
+    else:
+        particle_wts, algorithm_args = algorithm.initialize(
+            particles, target, target_args
+        )
 
     if keep_all:
         trajectories = torch.empty(

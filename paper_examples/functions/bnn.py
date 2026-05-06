@@ -1,4 +1,5 @@
-from typing import Optional
+from abc import ABC, abstractmethod
+from typing import Iterable, Optional, Sized
 
 import torch
 from torch import Tensor
@@ -7,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from jaxtyping import Float
 from torch import nn
+import torch.utils.data as torch_data
 from torch.nn.utils import vector_to_parameters
 from torch.func import functional_call
 from collections import OrderedDict
@@ -27,25 +29,35 @@ class bnn(nn.Module):
 
     Parameters
     ----------
-    d_in       : int   input dimension
+    in_dim     : int   input dimension
     hidden_dim : int   width of each hidden layer
     n_layers   : int   number of hidden layers
     """
 
-    hidden_dim: int
+    hidden_out_dims: list[int]
     n_layers: int
 
-    def __init__(self, d_in: int, hidden_dim: int, n_layers: int = 1):
+    def __init__(
+        self, in_dim: int, hidden_dim: int | list[int], out_dim: int, n_layers: int = 1
+    ):
         super().__init__()
         layers = []
-        self.hidden_dim, self.n_layers = hidden_dim, n_layers
-        in_dim = d_in
-        for _ in range(n_layers):
-            layers.append(nn.Linear(in_dim, hidden_dim))
-            in_dim = hidden_dim
+        hidden_out_dims: list[int]
+        if isinstance(hidden_dim, int):
+            hidden_out_dims = [hidden_dim for _ in range(n_layers)]
+        elif len(hidden_dim) != n_layers:
+            raise ValueError(
+                f"Expected len(hidden_dim) = {n_layers}, got {len(hidden_dim)}"
+            )
+        else:
+            hidden_out_dims = hidden_dim
+        self.hidden_out_dims, self.n_layers = hidden_out_dims, n_layers
+        for out_dim in hidden_out_dims:
+            layers.append(nn.Linear(in_dim, out_dim))
+            in_dim = out_dim
             layers.append(nn.ReLU())
 
-        layers.append(nn.Linear(hidden_dim, 1))
+        layers.append(nn.Linear(hidden_out_dims[-1], out_dim))
         self.net = nn.Sequential(*layers)
 
     def forward(self, xb: torch.Tensor) -> torch.Tensor:
@@ -71,7 +83,7 @@ def load_dataset(
     Returns X_train, Y_train, X_test, Y_test as torch.double tensors
     with shapes (N, d) and (N,)
     """
-    data = np.load(f"data/{dataset_name}.npz")
+    data = np.load(f"data/datasets/{dataset_name}.npz")
     X = torch.from_numpy(data["X"].T).to(dtype=dtype, device=device)
     Y = torch.from_numpy(data["Y"].T).to(dtype=dtype, device=device).squeeze()
 
@@ -110,12 +122,15 @@ def soft_margin_loss(x, y):
 
 soft_margin_v = torch.vmap(soft_margin_loss, in_dims=(0, None))
 
-def multi_label_soft_margin_01(x, y):
-    return F.multilabel_soft_margin_loss(x, y)
 
-multi_label_soft_margin_01_v = torch.vmap(multi_label_soft_margin_01, in_dims=(0, None))
+def cross_entropy(x, y):
+    return F.cross_entropy(x, y)
 
-class BNNPosterior:
+
+cross_entropy_v = torch.vmap(cross_entropy, in_dims=(0, None))
+
+
+class BNNPosterior(ABC):
     """
     A log-posterior for Bayesian neural networks
 
@@ -134,18 +149,18 @@ class BNNPosterior:
 
     def __init__(
         self,
-        data_tuple: tuple[Float[Tensor, "N_samples *"], ...],
-        hidden_dim: int = 10,
-        n_layers: int = 1,
-        beta: float = 1.0,
-        weight_decay: float = 0.01,
+        in_dim: int,
+        out_dim: int,
+        hidden_dim: int | list[int],
+        n_layers: int,
+        beta: float,
+        weight_decay: float,
     ):
-        self.data_tuple = data_tuple
-        data = data_tuple[0] if isinstance(data_tuple, tuple) else data_tuple
         self.beta = beta
         self.lambda2 = weight_decay
-        d = data.shape[1]
-        self.model = bnn(d_in=d, hidden_dim=hidden_dim, n_layers=n_layers).double()
+        self.model = bnn(
+            in_dim=in_dim, hidden_dim=hidden_dim, out_dim=out_dim, n_layers=n_layers
+        ).double()
         self.param_info = [
             (name, p.shape, p.numel()) for name, p in self.model.named_parameters()
         ]
@@ -159,28 +174,10 @@ class BNNPosterior:
             f"dim(theta) = {self.dimension}"
         )
 
-    def __call__(
-        self, theta: Tensor, data_labels: Optional[tuple[Tensor, Tensor]] = None
-    ):
-        single_theta = theta.ndim == 1
-        if single_theta:
-            theta = theta.unsqueeze(0)
-        elif theta.ndim > 2:
-            raise ValueError(f"theta.ndim must be 1 or 2. Got {theta.ndim}")
+    @abstractmethod
+    def __call__(self, theta: Tensor, dataset: Optional[tuple[Tensor, ...]]): ...
 
-        if data_labels is None:
-            data, labels = self.data, self.labels
-        else:
-            data, labels = data_labels
-
-        pred: Tensor = bnn_evaluator_v(
-            theta, self.model, self.buffer_dict, self.param_info, data
-        )
-        data_loss = soft_margin_v(pred, labels) * self.data.shape[0]
-        reg = self.lambda2 * (theta**2).sum(-1)
-        # Post = -(soft_margin(theta) + lambda_2 ||theta||^2)
-        return data_loss.add_(reg).div_(-self.beta).squeeze_()
-
+    @abstractmethod
     def get_data_loader(
         self,
         batch_size: int = 1,
@@ -188,21 +185,10 @@ class BNNPosterior:
         num_workers: int = 0,
         *data_loader_args,
         **data_loader_kwargs,
-    ):
-        import torch.utils.data as torch_data
+    ) -> torch.utils.data.DataLoader: ...
 
-        data: torch_data.TensorDataset
-        data = torch_data.TensorDataset(self.data, self.labels)
-        return torch_data.DataLoader(
-            data,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            num_workers=num_workers,
-            *data_loader_args,
-            **data_loader_kwargs,
-        )
 
-class BNNClassifierPosterior:
+class BNNClassifierPosterior(BNNPosterior):
     """
     A log-posterior for BNN for classification
 
@@ -230,15 +216,7 @@ class BNNClassifierPosterior:
     ):
         self.data = data
         self.labels = labels
-        self.beta = beta
-        self.lambda2 = weight_decay
-        d = data.shape[1]
-        self.model = bnn(d_in=d, hidden_dim=hidden_dim, n_layers=n_layers).double()
-        self.param_info = [
-            (name, p.shape, p.numel()) for name, p in self.model.named_parameters()
-        ]
-        self.buffer_dict = OrderedDict(self.model.named_buffers())
-        self.dimension = sum(nu for _, _, nu in self.param_info)
+        super().__init__(data.shape[1], 1, hidden_dim, n_layers, beta, weight_decay)
 
     def __repr__(self):
         return (
@@ -247,19 +225,21 @@ class BNNClassifierPosterior:
             f"dim(theta) = {self.dimension}"
         )
 
-    def __call__(
-        self, theta: Tensor, data_labels: Optional[tuple[Tensor, Tensor]] = None
-    ):
+    def __call__(self, theta: Tensor, dataset: Optional[tuple[Tensor, ...]] = None):
         single_theta = theta.ndim == 1
         if single_theta:
             theta = theta.unsqueeze(0)
         elif theta.ndim > 2:
             raise ValueError(f"theta.ndim must be 1 or 2. Got {theta.ndim}")
 
-        if data_labels is None:
+        if dataset is None:
             data, labels = self.data, self.labels
         else:
-            data, labels = data_labels
+            if len(dataset) != 2:
+                raise ValueError(
+                    f"Expected dataset=(data,labels), got len(dataset)={len(dataset)}"
+                )
+            data, labels = dataset
 
         pred: Tensor = bnn_evaluator_v(
             theta, self.model, self.buffer_dict, self.param_info, data
@@ -290,7 +270,8 @@ class BNNClassifierPosterior:
             **data_loader_kwargs,
         )
 
-class BNNMultiClassifierPosterior:
+
+class BNNMultiClassifierPosterior(BNNPosterior):
     """
     A log-posterior for BNN for classification
 
@@ -304,35 +285,40 @@ class BNNMultiClassifierPosterior:
     weight_decay : float prior weight
     """
 
-    model: bnn
-    param_info: list[tuple[str, torch.Size, int]]
-    n_labels: int
+    dataset: torch_data.Dataset
+    N_data_total: int
 
     def __init__(
         self,
-        data: Float[Tensor, "N_samples dim"],
-        labels: Float[Tensor, " N_samples"],
-        hidden_dim: int = 10,
+        dataset: torch.utils.data.Dataset,
+        n_labels: int,
+        hidden_dims: int | list[int] = [128, 64],
         n_layers: int = 1,
         beta: float = 1.0,
         weight_decay: float = 0.01,
-        n_labels: int = 0,
+        N_data_total: int = 0,
+        data_dim: int = 0,
     ):
-        self.data = data
-        n_data, d = data.shape
-        if n_labels == 0:
-            n_labels = int(labels.max().item())
-        self.n_labels = n_labels
-        self.labels = torch.zeros((n_data, n_labels), dtype=torch.int32, device=data.device)
-        self.labels[torch.arange(n_data, device=data.device), labels].fill_(1.)
-        self.beta = beta
-        self.lambda2 = weight_decay
-        self.model = bnn(d_in=d, hidden_dim=hidden_dim, n_layers=n_layers).double()
-        self.param_info = [
-            (name, p.shape, p.numel()) for name, p in self.model.named_parameters()
-        ]
-        self.buffer_dict = OrderedDict(self.model.named_buffers())
-        self.dimension = sum(nu for _, _, nu in self.param_info)
+        self.dataset = dataset
+        if N_data_total <= 0:
+            if isinstance(dataset, Sized):
+                self.N_data_total = len(dataset)
+            else:
+                raise NotImplementedError
+        else:
+            self.N_data_total = N_data_total
+
+        if data_dim <= 0:
+            data_dim = dataset.data.shape[0]  # type: ignore
+
+        super().__init__(
+            data_dim,
+            n_labels,
+            hidden_dim=hidden_dims,
+            n_layers=n_layers,
+            beta=beta,
+            weight_decay=weight_decay,
+        )
 
     def __repr__(self):
         return (
@@ -341,26 +327,35 @@ class BNNMultiClassifierPosterior:
             f"dim(theta) = {self.dimension}  n_labels = {self.n_labels}"
         )
 
-    def __call__(
-        self, theta: Tensor, data_labels: Optional[tuple[Tensor, Tensor]] = None
-    ):
+    def __call__(self, theta: Tensor, dataset: Optional[tuple[Tensor, ...]] = None):
         single_theta = theta.ndim == 1
         if single_theta:
             theta = theta.unsqueeze(0)
         elif theta.ndim > 2:
             raise ValueError(f"theta.ndim must be 1 or 2. Got {theta.ndim}")
 
-        if data_labels is None:
-            data, labels = self.data, self.labels
+        if dataset is None:
+            data_loader_all = torch.utils.data.DataLoader(
+                self.dataset,
+                batch_size=len(self.dataset),  # type: ignore
+            )
+            data, labels = next(iter(data_loader_all))
+            if data is None or labels is None:
+                raise ValueError(
+                    "Expected dataset is not None or given (test_data, test_labels)"
+                )
         else:
-            data, labels = data_labels
+            if len(dataset) != 2:
+                raise ValueError(
+                    f"Expected dataset = (data, labels). Got len(dataset)={len(dataset)}"
+                )
+            data, labels = dataset
 
         pred: Tensor = bnn_evaluator_v(
             theta, self.model, self.buffer_dict, self.param_info, data
         )
-        data_loss = soft_margin_v(pred, labels) * self.data.shape[0]
+        data_loss = cross_entropy_v(pred, labels) * self.N_data_total
         reg = self.lambda2 * (theta**2).sum(-1)
-        # Post = -(soft_margin(theta) + lambda_2 ||theta||^2)
         return data_loss.add_(reg).div_(-self.beta).squeeze_()
 
     def get_data_loader(
@@ -371,12 +366,8 @@ class BNNMultiClassifierPosterior:
         *data_loader_args,
         **data_loader_kwargs,
     ):
-        import torch.utils.data as torch_data
-
-        data: torch_data.TensorDataset
-        data = torch_data.TensorDataset(self.data, self.labels)
-        return torch_data.DataLoader(
-            data,
+        return torch.utils.data.DataLoader(
+            self.dataset,
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=num_workers,
