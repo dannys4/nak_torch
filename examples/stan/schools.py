@@ -3,8 +3,8 @@ import torch
 import nest_asyncio
 import nak_torch
 from nak_torch.tools import stan_tools
-from nak_torch.algorithms import MSIP, SVGD
-from nak_torch.algorithms.msip import MSIPFredholm, MSIPQuadGradientFree
+from nak_torch.algorithms import MSIP
+from nak_torch.algorithms.msip import MSIPFredholm
 
 nest_asyncio.apply() # See pystan documentation on why you need this when doing jupyter
 import stan  # noqa: E402
