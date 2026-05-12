@@ -69,7 +69,7 @@ class MNIST(Example):
     batch_size: int = 64
 
     def name(self):
-        return "two_moons"
+        return "mnist"
 
     def __init__(
         self,
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     # EXAMPLE SPECIFIC DEFAULTS
     N_EXPERIMENTS = 1
     SEED = 3120312
-    N_STEPS = 10
+    N_STEPS = 1000
     DTYPE = torch.float64
 
     D = Defaults(n_steps=N_STEPS)
