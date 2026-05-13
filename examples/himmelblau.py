@@ -124,7 +124,7 @@ extrema_pts = [(pt.min(), pt.max()) for pt in pt_list]
 g_min, g_max = [m(x[i] for x in extrema_pts) for (m,i) in [(min,0), (max,1)]]
 extrema_wts = [(w.min(), w.max()) for w in wt_list if w is not None]
 vmin, vmax = [m(x[i] for x in extrema_wts) for (m,i) in [(min,0), (max,1)]]
-titles = ["Initialization", "SVGD", "MSIP-1", "MSIP-GF"]
+titles = ["Initialization", "SVGD", "MSIP-F", "MSIP-GF"]
 title_weights = [None, None, 'heavy', 'heavy']
 for (ax, title, pt, wt, title_wt) in zip(axs, titles, pt_list, wt_list, title_weights):
     ax.set_axis_off()
