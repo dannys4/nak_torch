@@ -44,18 +44,19 @@ torch.set_default_dtype(torch.float64)
 # ══════════════════════════════════════════════════════════════════════════════
 
 M_VALUES  = [5, 10, 20, 50]
+#M_VALUES  = [ 50]
 R_RUNS    = 10
 N_STEPS   = 1000
 
-LR_SVGD   = 0.5
-LR_ALDI   = 0.005 / 3
-LR_MSIP   = 0.5
+LR_SVGD   = 0.8
+LR_ALDI   = 0.005
+LR_MSIP   = 0.8
 
 KERNEL_LS      = 0.5
 KERNEL_DIAG    = 1e-8
 GRADIENT_DECAY = 1.0
 BOUNDS_MSIP    = (-1000.0, 1000.0)
-N_QUAD         = 1
+N_QUAD         = 10
 
 INIT_MEAN = torch.tensor([18.0, 18.0])
 INIT_STD  = 1.0
@@ -292,8 +293,10 @@ def integral_error(fname, particles, weights=None):
 # SINGLE-RUN RUNNER
 # ══════════════════════════════════════════════════════════════════════════════
 
-ALGO_NAMES = ["SVGD", "ALDI", "MSIP-Fredholm", "MSIP-QG"]
+ALGO_NAMES = ["SVGD", "ALDI", "MSIP-Fredholm"]
 
+
+#, "MSIP-GI-1"
 
 def run_one(M: int, seed: int) -> dict:
     torch.manual_seed(seed)
@@ -343,7 +346,7 @@ def run_one(M: int, seed: int) -> dict:
         bounds=BOUNDS_MSIP,
         keep_all=False, compile_step=False, verbose=False,
     )
-    results["MSIP-QG"] = (traj[-1], None)
+    results["MSIP-GI-1"] = (traj[-1], None)
 
     return results
 
@@ -403,13 +406,13 @@ ALGO_LS     = {
     "SVGD": "-",
     "ALDI": "-",
     "MSIP-Fredholm": "--",
-    "MSIP-QG": "-.",
+    "MSIP-GI-1": "-.",
 }
 ALGO_MARKER = {
     "SVGD": "o",
     "ALDI": "s",
     "MSIP-Fredholm": "D",
-    "MSIP-QG": "^",
+    "MSIP-GI-1": "^",
 }
 
 M_arr = np.array(M_VALUES, dtype=float)
@@ -461,3 +464,119 @@ for mk, (ylabel, filetag) in METRIC_META.items():
 
 print("\nAll done.")
 #\n(median ± IQR over {R_RUNS} runs)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VISUALIZE FINAL PARTICLES — last run, largest M
+# ══════════════════════════════════════════════════════════════════════════════
+
+try:
+    M = M_VALUES[-1]
+    run_idx = R_RUNS - 1
+
+    # recycle already-computed trajectories
+    final_run = raw_results[M][run_idx]
+
+    grid_res = 250
+    x_np = np.linspace(-18, 18, grid_res)
+    y_np = np.linspace(-18, 18, grid_res)
+
+    x_range = torch.tensor(x_np, dtype=torch.get_default_dtype())
+    y_range = torch.tensor(y_np, dtype=torch.get_default_dtype())
+
+    XX, YY = torch.meshgrid(x_range, y_range, indexing="ij")
+    grid_pts = torch.stack([XX.flatten(), YY.flatten()], dim=1)
+
+    log_dens_grid = torch.vmap(post_log_dens)(grid_pts).reshape(grid_res, grid_res)
+    dens_grid = torch.exp(
+        log_dens_grid - log_dens_grid.max()
+    ).detach().cpu().numpy()
+
+    n_algos = len(ALGO_NAMES)
+
+    fig, axes = plt.subplots(
+        1,
+        n_algos,
+        figsize=(5 * n_algos, 4.5),
+        sharex=True,
+        sharey=True,
+    )
+
+    if n_algos == 1:
+        axes = [axes]
+
+    for ax, algo_name in zip(axes, ALGO_NAMES):
+
+        pts, wts = final_run[algo_name]
+        xy = pts.detach().cpu().numpy()
+
+        # very light background density
+        ax.contourf(
+            x_np,
+            y_np,
+            dens_grid.T,
+            levels=40,
+            cmap="Greys",
+            alpha=0.24,
+            zorder=0,
+        )
+
+        # subtle contours
+        ax.contour(
+            x_np,
+            y_np,
+            dens_grid.T,
+            levels=12,
+            colors="grey",
+            linewidths=0.7,
+            alpha=0.7,
+            zorder=1,
+        )
+
+        # particles
+        ax.scatter(
+            xy[:, 0],
+            xy[:, 1],
+            s=38,
+            c="#c1121f",
+            edgecolors="white",
+            linewidths=0.6,
+            alpha=0.95,
+            zorder=3,
+        )
+
+        ax.set_facecolor("white")
+
+        ax.set_xlim(-18, 18)
+        ax.set_ylim(-18, 18)
+
+        ax.set_title(
+            algo_name,
+            fontsize=12,
+            fontweight="bold",
+        )
+
+#        ax.set_xlabel(r"$x_1$")
+
+#    axes[0].set_ylabel(r"$x_2$")
+
+    # fig.suptitle(
+    #     f"Final particles — GMM 2D, M={M}, T={N_STEPS}, run={R_RUNS}",
+    #     fontsize=14,
+    #     y=1.03,
+    # )
+
+    plt.tight_layout()
+
+    fname = (
+        f"final_particles_four_algorithms_"
+        f"M_{M}_T_{N_STEPS}_run_{R_RUNS}_sigma_{SIGMA_TAG}.pdf"
+    )
+
+    plt.savefig(fname, bbox_inches="tight")
+    plt.close()
+
+    print(f"Saved {fname}")
+
+except Exception as exc:
+    print(f"Skipped final particle visualization because of: {exc}")
