@@ -8,7 +8,7 @@ from functions import himmelblau
 from nak_torch import nak
 from nak_torch.algorithms import MSIP, SVGD
 from nak_torch.algorithms.msip import MSIPFredholm, MSIPQuadGradientFree
-from nak_torch.tools.quadrature import spherical_MC_radial_Laguerre
+from nak_torch.tools.quadrature import gauss_MC, spherical_MC_radial_Laguerre
 from datetime import datetime
 from nak_torch.tools.kernel import kernel_optimal_weight_factory, DEFAULT_KERNEL_MATRIX
 
@@ -26,22 +26,20 @@ init_particles = torch.randn((n_particles, 2)) + 8.0
 params = {
     "n_steps": 100,
     "bounds": (-15, 15),
-    "kernel_lengthscale": 0.15,
+    "kernel_lengthscale": 0.25,
     "init_particles": init_particles,
     "n_particles": n_particles,
     "dim": 2,
-    "lr": 0.6,
-    "kernel_diag_infl": 1e-5,
+    "lr": 0.95,
+    "kernel_diag_infl": 1e-7,
     "verbose": False
 }
 
-# %%
 msip = MSIP(**params)
 svgd = SVGD(**params)
 
-# %%
 target_msip_fr = MSIPFredholm(
-    gradient_decay=0.95,
+    gradient_decay=1.00,
     log_dens_grad_val=torch.vmap(
         torch.func.grad_and_value(log_density),
         in_dims=(0,None)
@@ -50,7 +48,6 @@ target_msip_fr = MSIPFredholm(
 
 trajectories_fr, trajectories_wts_fr = nak(target_msip_fr, msip, **params)
 
-# %%
 Ngrid = 1000
 x = y = torch.linspace(-5, 5, Ngrid)
 X,Y = torch.meshgrid(x,y,indexing="ij")
@@ -85,16 +82,17 @@ plt.show()
 
 
 # %%
+rng = torch.Generator()
+rng.manual_seed(123213)
 target_msip_gf = MSIPQuadGradientFree(
     log_density,
-    lambda b: spherical_MC_radial_Laguerre(b, N_spherical=5, d=2, N_radial=2)
+    lambda b: gauss_MC(b, N_quad=5, d=2, rng=rng)
 )
 params_gf = params.copy()
-params_gf['lr'] = 0.8
+params_gf['lr'] = 1.00
 n_particles = 25
 trajectories_pts_gf,trajectories_wts_gf = nak(target_msip_gf, msip, **params_gf)
 
-# %%
 pts_gf = trajectories_pts_gf[-1]
 wts_gf = trajectories_wts_gf[-1]
 plt.contourf(X,Y,Z, levels=20, cmap="Grays")
@@ -126,7 +124,7 @@ extrema_pts = [(pt.min(), pt.max()) for pt in pt_list]
 g_min, g_max = [m(x[i] for x in extrema_pts) for (m,i) in [(min,0), (max,1)]]
 extrema_wts = [(w.min(), w.max()) for w in wt_list if w is not None]
 vmin, vmax = [m(x[i] for x in extrema_wts) for (m,i) in [(min,0), (max,1)]]
-titles = ["Initialization", "SVGD", "MSIP-1", "MSIP-GF"]
+titles = ["Initialization", "SVGD", "MSIP-F", "MSIP-GF"]
 title_weights = [None, None, 'heavy', 'heavy']
 for (ax, title, pt, wt, title_wt) in zip(axs, titles, pt_list, wt_list, title_weights):
     ax.set_axis_off()

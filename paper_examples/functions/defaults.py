@@ -152,6 +152,8 @@ class Example(ABC):
     @abstractmethod
     def init_particles(self, D: Defaults, device=None, dtype=None) -> Tensor: ...
 
+    def get_test_target_args(self, device=None, dtype=None) -> Any:
+        return None
 
 @dataclass
 class GaussExample(Example):
@@ -190,31 +192,37 @@ def run_example(
     dtype: Optional[torch.dtype] = None,
 ):
     metric = get_metric(D.metric, ex.log_dens_evaluator, ex.grad_log_dens_evaluator)
+    test_target_args = ex.get_test_target_args(dtype=dtype, device=rng.device)
     metric_evals = {alg: [] for alg in ex.get_algorithms()}
     outputs = {alg: [] for alg in ex.get_algorithms()}
 
     def run_nak(target, alg, init_particles, alg_name, metric_evals, outputs):
-        res: Any
-        try:
+        # res: Any
+        # try:
             res = nak_torch.nak(
                 target, alg, D.n_steps, lr, rng, init_particles, D.bounds,
                 get_target_args=ex.get_target_args_factory()
             )
             outputs[alg_name].append(res)
-        except:  # noqa: E722
-            warnings.warn(f"Problem running algorithm {alg_name}")
+        # except:  # noqa: E722
+        #     warnings.warn(f"Problem running algorithm {alg_name}")
+        #     return metric_evals, outputs
+        # try:
+            if isinstance(res, tuple):
+                res = metric(res[0][-1], res[1][-1], target_args=test_target_args)
+            else:
+                res = metric(res[-1], target_args=test_target_args)
+            metric_evals[alg_name].append(res)
+            # iterator = zip(*res) if isinstance(res, tuple) else zip(res)
+            # metric_evals[alg_name].append(
+            #     [
+            #         metric(*pw, target_args=test_target_args)
+            #         for pw in tqdm(iterator, desc=alg_name, total=D.n_steps + 1)
+            #     ]
+            # )
+        # except:  # noqa: E722
+        #     warnings.warn(f"Problem assessing algorithm {alg_name}")
             return metric_evals, outputs
-        try:
-            iterator = zip(*res) if isinstance(res, tuple) else zip(res)
-            metric_evals[alg_name].append(
-                [
-                    metric(*pw)
-                    for pw in tqdm(iterator, desc=alg_name, total=D.n_steps + 1)
-                ]
-            )
-        except:  # noqa: E722
-            warnings.warn(f"Problem assessing algorithm {alg_name}")
-        return metric_evals, outputs
 
     now_str = str(datetime.now()).replace(" ", "_").replace("-", "_")
     parent_dir = os.path.join(os.path.dirname(filepath), "data")
@@ -234,9 +242,9 @@ def run_example(
         metric_evals, outputs = run_nak(
             ex.target_msip_gi, ex.msip, init_particles, "msip_gi", metric_evals, outputs
         )
-        metric_evals, outputs = run_nak(
-            ex.target_msip_gf, ex.msip, init_particles, "msip_gf", metric_evals, outputs
-        )
+        # metric_evals, outputs = run_nak(
+        #     ex.target_msip_gf, ex.msip, init_particles, "msip_gf", metric_evals, outputs
+        # )
 
         # svgd
         metric_evals, outputs = run_nak(
@@ -259,19 +267,19 @@ def run_example(
         )
 
         # aldi
-        metric_evals, outputs = run_nak(
-            ex.grad_log_dens_evaluator,
-            ex.grad_aldi,
-            init_particles,
-            "grad_aldi",
-            metric_evals,
-            outputs,
-        )
+        # metric_evals, outputs = run_nak(
+        #     ex.grad_log_dens_evaluator,
+        #     ex.grad_aldi,
+        #     init_particles,
+        #     "grad_aldi",
+        #     metric_evals,
+        #     outputs,
+        # )
 
         # CBS
-        metric_evals, outputs = run_nak(
-            ex.log_dens_evaluator, ex.cbs, init_particles, "cbs", metric_evals, outputs
-        )
+        # metric_evals, outputs = run_nak(
+        #     ex.log_dens_evaluator, ex.cbs, init_particles, "cbs", metric_evals, outputs
+        # )
 
         # Gauss Model Algorithms
         if isinstance(ex, GaussExample):
@@ -291,7 +299,7 @@ def run_example(
             )
 
         # Dump after each experiment in case things crash
-        outputs_save = {k: output_stack(v) for (k, v) in outputs.items() if len(v) > 0}
+        # outputs_save = {k: output_stack(v) for (k, v) in outputs.items() if len(v) > 0}
 
         all_experiment_data = dict(
             lr=lr,
@@ -300,8 +308,8 @@ def run_example(
             hyperparams=D.__dict__,
         )
 
-        with open(output_path, "wb") as f:
-            pickle.dump(outputs_save, f)
+        # with open(output_path, "wb") as f:
+        #     pickle.dump(outputs_save, f)
 
         experiment_path = os.path.join(parent_dir, "experiment", fname)
 

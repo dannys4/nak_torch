@@ -33,7 +33,7 @@ torch.set_default_dtype(torch.float64)
 
 # %%
 DATA_URL = "https://raw.githubusercontent.com/DartML/Stein-Variational-Gradient-Descent/refs/heads/master/data/covertype.mat"
-DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "covertype.npy")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "datasets", "covertype.npy")
 
 
 def download_file(data_url: str = DATA_URL, data_path: str = DATA_PATH):
@@ -46,14 +46,6 @@ def download_file(data_url: str = DATA_URL, data_path: str = DATA_PATH):
     data_arr = np.column_stack((covariates, labels))
     # Save
     np.save(data_path, data_arr)
-
-
-# def accuracy(coeffs):
-#     data, labels = regression_model.test_data, regression_model.test_labels
-#     prob = torch.sigmoid(coeffs[:-1] @ data.T)
-#     pred_labels = prob > 0.5
-#     return torch.mean((pred_labels == labels).to(torch.float64))
-
 
 def init_sample(
     N_samples: int,
