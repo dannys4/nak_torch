@@ -42,8 +42,8 @@ DEFAULT_MSIP_KERNEL_LENGTHSCALE = 1e-1
 def output_stack(t):
     if isinstance(t[0], tuple):
         points, weights = [torch.stack([pw[j] for pw in t]) for j in range(2)]
-        return points.numpy(), weights.numpy()
-    return torch.stack(t).numpy()
+        return points.cpu().numpy(), weights.cpu().numpy()
+    return torch.stack(t).cpu().numpy()
 
 
 @dataclass
@@ -225,7 +225,7 @@ def run_example(
     for r in range(n_experiments):
         print("\n\nStarting experiment {}\n\n".format(r))
         init_particles = ex.init_particles(D, dtype=dtype)
-        all_init_particles.append(init_particles.numpy())
+        all_init_particles.append(init_particles.cpu().numpy())
 
         # msip
         metric_evals, outputs = run_nak(

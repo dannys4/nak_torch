@@ -85,11 +85,11 @@ def save_metric(metric_dir: str, metric: str, example: str, metric_values: dict)
 ExConstructor = Callable[[torch.Generator, Defaults, Unpack[NotRequired[bool]]], Example]
 
 EXAMPLES: list[tuple[str, ExConstructor, int]] = [
-    # ("abpde", aristoff_bangerth.AristoffBangerth, 23109231029),
+    ("aristoff_bangerth", aristoff_bangerth.AristoffBangerth, 23109231029),
     # ("covid", covid.COVID, 23802123),
-    ("schools", schools.Schools, 231239842),
-    ("two_moons", two_moons.TwoMoons, 3120312),
-    ("blr_covtype", covtype.CovtypeLogreg, 23802123)
+    # ("schools", schools.Schools, 231239842),
+    # ("two_moons", two_moons.TwoMoons, 3120312),
+    # ("blr_covtype", covtype.CovtypeLogreg, 23802123)
 ]
 
 LENGTHSCALES = [1e-2, 5e-2, 1e-1, 5e-1, 1e-0]
@@ -101,7 +101,7 @@ KERNELS = [
 
 
 def calculate_ksd_array(lengthscales, kernels, data_dir, D, ex_name, ex_constr, seed):
-    rng = torch.Generator()
+    rng = torch.Generator(torch.device("cuda:0"))
     rng.manual_seed(seed)
     ex = ex_constr(rng, D, use_test=True)
     metric_dict: dict[Any, dict[str, list[float]]] = {}
@@ -132,9 +132,9 @@ if __name__ == "__main__":
     D = Defaults()
     for ex_name, ex_constr, seed in EXAMPLES:
         # KSD
-        # metric_dict = calculate_ksd_array(LENGTHSCALES, KERNELS, data_dir, D, ex_name, ex_constr, seed)
-        # save_metric(metric_dir, "ksd", ex_name, metric_dict)
+        metric_dict = calculate_ksd_array(LENGTHSCALES, KERNELS, data_dir, D, ex_name, ex_constr, seed)
+        save_metric(metric_dir, "ksd", ex_name, metric_dict)
 
         # Cross Entropy
-        metric_dict = calculate_cross_entropy(data_dir, D, ex_name, ex_constr, seed)
-        save_metric(metric_dir, "cross_entropy", ex_name, metric_dict)
+        # metric_dict = calculate_cross_entropy(data_dir, D, ex_name, ex_constr, seed)
+        # save_metric(metric_dir, "cross_entropy", ex_name, metric_dict)

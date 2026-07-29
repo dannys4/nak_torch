@@ -64,13 +64,15 @@ class AristoffBangerth(GaussExample):
 
 if __name__ == "__main__":
     # EXAMPLE SPECIFIC DEFAULTS
-    N_EXPERIMENTS = 1
-    SEED = 23109231029
+    N_EXPERIMENTS = 20
+    SEED = 758313
     N_STEPS = 1000
+    DEVICE = torch.device('cuda:0')
     DTYPE = torch.float64
-
+    
+    torch.set_default_device(DEVICE)
     D = Defaults(n_steps=N_STEPS)
-    rng = torch.Generator()
+    rng = torch.Generator(DEVICE)
     rng.manual_seed(SEED)
     ex = AristoffBangerth(rng, D, dtype=DTYPE)
 
