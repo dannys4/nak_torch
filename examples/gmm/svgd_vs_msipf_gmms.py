@@ -28,23 +28,44 @@ torch.set_default_dtype(torch.float64)
 torch.manual_seed(1023921)
 
 # ── Target: rotated 3-component GMM (identical to the v0 file) ────────────────
-gmm_weights = torch.tensor([1 / 3, 1 / 3, 1 / 3])
-gmm_means = torch.stack(
-    [
-        torch.tensor([6.2, -6.0]),
-        torch.tensor([-4.0, 5.0]),
-        torch.tensor([7.0, 0.0]),
-    ]
-)
-cov_rng = torch.Generator(torch.get_default_device())
-cov_rng.manual_seed(0)
-gmm_cov_matrices = torch.stack(
-    [torch.nn.init.orthogonal_(torch.empty((2, 2)), generator=cov_rng) for _ in range(3)]
-)
-gmm_cov_eigvals = torch.stack([torch.diag(torch.as_tensor([2.0, 1.0])) for _ in range(3)])
-gmm_covs = torch.einsum(
-    "kij,kjl,kml->kim", gmm_cov_matrices, gmm_cov_eigvals, gmm_cov_matrices
-)
+
+
+gmm_weights = torch.tensor([1 / 5] * 5, dtype=torch.get_default_dtype())
+
+gmm_means = torch.stack([
+    2 * torch.tensor([ 6.2, -6.0], dtype=torch.get_default_dtype()),
+    2 * torch.tensor([-4.0,  5.0], dtype=torch.get_default_dtype()),
+    2 * torch.tensor([ 7.0,  3.0], dtype=torch.get_default_dtype()),
+    2 * torch.tensor([-6.5, -4.5], dtype=torch.get_default_dtype()),
+    2 * torch.tensor([ 1.0,  7.0], dtype=torch.get_default_dtype()),
+])
+
+gmm_covs = torch.stack([
+    torch.tensor([[1.5,  0.1], [0.1,  0.5]], dtype=torch.get_default_dtype()),
+    torch.tensor([[2.0, -0.6], [-0.6, 0.5]], dtype=torch.get_default_dtype()),
+    torch.tensor([[0.7,  0.4], [0.4,  1.2]], dtype=torch.get_default_dtype()),
+    torch.tensor([[1.3, -0.5], [-0.5, 0.9]], dtype=torch.get_default_dtype()),
+    torch.tensor([[0.6,  0.35], [0.35, 1.6]], dtype=torch.get_default_dtype()),
+])
+
+
+# gmm_weights = torch.tensor([1 / 3, 1 / 3, 1 / 3])
+# gmm_means = torch.stack(
+#     [
+#         torch.tensor([6.2, -6.0]),
+#         torch.tensor([-4.0, 5.0]),
+#         torch.tensor([7.0, 0.0]),
+#     ]
+# )
+#cov_rng = torch.Generator(torch.get_default_device())
+#cov_rng.manual_seed(0)
+#gmm_cov_matrices = torch.stack(
+#    [torch.nn.init.orthogonal_(torch.empty((2, 2)), generator=cov_rng) for _ in range(3)]
+#
+#gmm_cov_eigvals = torch.stack([torch.diag(torch.as_tensor([2.0, 1.0])) for _ in range(3)])
+#gmm_covs = torch.einsum(
+#    "kij,kjl,kml->kim", gmm_cov_matrices, gmm_cov_eigvals, gmm_cov_matrices
+#)
 gmm_precisions = torch.linalg.inv(gmm_covs)
 
 
@@ -63,7 +84,7 @@ post_log_dens_grad_val_batch = torch.vmap(post_log_dens_grad_val)
 
 # ── Hyper-parameters ─────────────────────────────────────────────────────────
 n_steps = 10000
-n_particles = 250
+n_particles = 1000
 
 lr_svgd = 0.8  # SVGD step size (as in all-gi-vs-msip_algos_comparison.py)
 lr_msip = 0.8  # MSIP-Fredholm step size
@@ -80,7 +101,7 @@ bounds = (-100.0, 100.0)
 mmd_bandwidth = 0.1
 
 # Shared initial cloud so the two methods start from exactly the same particles.
-init_mean = torch.tensor([10.0, 10.0])
+init_mean = torch.tensor([0.0, 0.0])
 init_std = 1.0
 init_particles = init_mean + init_std * torch.randn((n_particles, 2))
 
@@ -212,8 +233,8 @@ print(f"final MMD  SVGD={mmd_svgd[-1]:.4e}   MSIP-Fredholm={mmd_msip_f[-1]:.4e}"
 
 # ── Target contour grid ──────────────────────────────────────────────────────
 Ngrid = 200
-xgrid = torch.linspace(-10, 15, Ngrid)
-ygrid = torch.linspace(-10, 15, Ngrid)
+xgrid = torch.linspace(-25, 25, Ngrid)
+ygrid = torch.linspace(-25, 25, Ngrid)
 X, Y = torch.meshgrid(xgrid, ygrid, indexing="ij")
 grid_pts = torch.stack((X.flatten(), Y.flatten()), 1)
 Z = post_log_dens(grid_pts).reshape(Ngrid, Ngrid)
@@ -243,8 +264,8 @@ plt.colorbar(sc, ax=axes[1], shrink=0.8, label="|weight|")
 axes[1].set_title(f"MSIP-Fredholm – step {n_steps}")
 
 for ax in axes:
-    ax.set_xlim(-10, 15)
-    ax.set_ylim(-10, 15)
+    ax.set_xlim(-25, 25)
+    ax.set_ylim(-25, 25)
     ax.set_aspect(1.0)
     ax.set_xlabel("x₁")
     ax.set_ylabel("x₂")
