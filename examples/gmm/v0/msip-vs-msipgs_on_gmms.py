@@ -12,13 +12,13 @@ torch.set_default_dtype(torch.float64)
 torch.manual_seed(1023921)
 
 # %%
-n_steps, n_particles = 1000, 25
+n_steps, n_particles = 1000, 250
 lr_msip = 80e-2
-kernel_length_scale = 1.0
+kernel_length_scale = 0.1
 kernel_diag_infl = 1e-8
 bounds = (-100.0, 100.0)
 
-init_mean = torch.tensor([18.0, 18.0])
+init_mean = torch.tensor([5.0, 5.0])
 init_std = 1.0
 init_particles = init_mean + init_std * torch.randn((n_particles, 2))
 
