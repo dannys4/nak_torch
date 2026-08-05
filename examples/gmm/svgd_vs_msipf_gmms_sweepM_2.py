@@ -42,6 +42,14 @@ print(f"device={torch.empty(0).device}  dtype={torch.get_default_dtype()}")
 # ── Target: rotated 5-component GMM (identical to the source script) ─────────
 gmm_weights = torch.tensor([1 / 5] * 5, dtype=torch.get_default_dtype())
 
+#gmm_means = torch.stack([
+#    2 * torch.tensor([ 6.2, -6.0], dtype=torch.get_default_dtype()),
+#    2 * torch.tensor([-4.0,  5.0], dtype=torch.get_default_dtype()),
+#    2 * torch.tensor([ 7.0,  3.0], dtype=torch.get_default_dtype()),
+#    2 * torch.tensor([-6.5, -4.5], dtype=torch.get_default_dtype()),
+#    2 * torch.tensor([ 1.0,  7.0], dtype=torch.get_default_dtype()),
+#])
+
 gmm_means = torch.stack([
     2 * torch.tensor([ 6.2, -6.0], dtype=torch.get_default_dtype()),
     2 * torch.tensor([-4.0,  5.0], dtype=torch.get_default_dtype()),
