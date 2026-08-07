@@ -18,7 +18,6 @@ from nak_torch.algorithms.msip import (
     MSIPQuadGradientFree,
 )
 
-from functions import joker
 from nak_torch.tools.metrics import CrossEntropy, KernelSteinDiscrepancy
 
 
@@ -29,6 +28,7 @@ else:
     torch.set_default_device("cpu")
 
 torch.set_default_dtype(torch.float64)
+from functions import joker  # noqa: E402
 
 
 # ══════════════════════════════════════════════════════════════════════════════
