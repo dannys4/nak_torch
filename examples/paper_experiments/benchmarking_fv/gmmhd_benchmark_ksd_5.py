@@ -568,17 +568,16 @@ def summarize_results(results_for_metric: dict[tuple[int, int], dict[str, list[f
                     results_for_metric[(d, M)][algo_name],
                     dtype=torch.float64,
                 )
-                mean = vals.mean().item()
-                std = vals.std(unbiased=True).item() if R > 1 else 0.0
-                summary_rows.append(
-                    {
-                        "d": d,
-                        "M": M,
-                        "algo_name": algo_name,
-                        "mean": mean,
-                        "std": std,
-                    }
-                )
+                for (run_idx,val) in enumerate(vals):
+                    summary_rows.append(
+                        {
+                            "d": d,
+                            "M": M,
+                            "run_idx": run_idx+1,
+                            "algo_name": algo_name,
+                            "value": val,
+                        }
+                    )
 
     return summary_rows
 
@@ -587,13 +586,13 @@ def print_summary_table(metric_name: str, summary_rows: list[dict[str, Any]]):
     print(f"\nFinal {metric_name} over R runs")
     print("smaller is better")
     print()
-    print(f"{'d':>5}  {'M':>5}  {'Algorithm':<16}  {'mean':>14}  {'std':>14}")
+    print(f"{'d':>5}  {'M':>5}  {'r':>3}  {'Algorithm':<16}  {'value':>14}")
     print("-" * 70)
 
     for row in summary_rows:
         print(
-            f"{row['d']:5d}  {row['M']:5d}  {row['algo_name']:<16}  "
-            f"{row['mean']:14.6f}  {row['std']:14.6f}"
+            f"{row['d']:5d}  {row['M']:5d}  {row['run_idx']:3d}  "
+            f"{row['algo_name']:<16}  {row['value']:14.6f}"
         )
 
 
@@ -640,7 +639,7 @@ def save_metric_files(
     torch.save(payload, pt_path)
 
     with csv_path.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["metric_name", "d", "M", "algo_name", "mean", "std"])
+        writer = csv.DictWriter(f, fieldnames=["metric_name", "d", "M", "run_idx", "algo_name", "value"])
         writer.writeheader()
         for row in summary_rows:
             writer.writerow({"metric_name": metric_name, **row})
@@ -679,7 +678,7 @@ def save_combined_summary(
     with combined_csv.open("w", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["metric_name", "d", "M", "algo_name", "mean", "std"],
+            fieldnames=["metric_name", "d", "M", "run_idx", "algo_name", "value"],
         )
         writer.writeheader()
         for metric_name, rows in all_summary_rows.items():
