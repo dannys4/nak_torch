@@ -575,7 +575,7 @@ def summarize_results(results_for_metric: dict[tuple[int, int], dict[str, list[f
                             "M": M,
                             "run_idx": run_idx+1,
                             "algo_name": algo_name,
-                            "value": val,
+                            "value": val.item(),
                         }
                     )
 
