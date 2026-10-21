@@ -112,11 +112,10 @@ def spherical_struct_radial_Laguerre(
     MC_pts = sphere_pts.unsqueeze(0).expand(batch_size, -1, -1)
     MC_wts = sphere_wts.unsqueeze(0).expand(batch_size, -1)
 
-    pts, wts = vmap_combine_radial_spherical_quadrature(
-        MC_pts, MC_wts, r_pts, r_wts
-    )
+    pts, wts = vmap_combine_radial_spherical_quadrature(MC_pts, MC_wts, r_pts, r_wts)
 
     return pts, wts
+
 
 def gauss_MC(
     batch_size: int,

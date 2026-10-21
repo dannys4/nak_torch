@@ -7,7 +7,6 @@ from jaxtyping import Float
 
 import torch
 from torch import Tensor
-import pickle
 from .types import (
     BatchLogDensityGrad,
     BatchLogDensityGradVal,
@@ -26,7 +25,6 @@ from .types import (
 from .kernel import (
     DEFAULT_KERNEL_ELEM,
     matricize_kernel_elem,
-    sqexp_kernel_elem,
     stein_kernel_mat_factory,
 )
 

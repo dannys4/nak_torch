@@ -36,6 +36,7 @@ GradKernelMatrixType = Float[Tensor, "batch batch d"]
 
 DensityGradValOutput = tuple[BatchPtType, BatchType]
 MSIPEstimatorOutput = tuple[BatchType, BatchPtType]
+DataQuantizationType = Float[Tensor, "samples d"]
 
 KernelFunction = Callable[[PtType, PtType, float], Float]
 BatchKernelGradValFunction = Callable[
@@ -46,6 +47,13 @@ EvaluatorOutputT = TypeVar("EvaluatorOutputT")
 
 
 class NAKTarget(ABC, Generic[EvaluatorOutputT]): ...
+
+
+class NAKTargetData(NAKTarget[EvaluatorOutputT]):
+    dataset: DatasetType
+
+    def __init__(self, data: DataQuantizationType):
+        self.dataset = data
 
 
 class BatchTargetEvaluator(NAKTarget[EvaluatorOutputT]):

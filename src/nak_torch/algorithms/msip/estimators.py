@@ -2,16 +2,27 @@ import torch
 from abc import abstractmethod
 from nak_torch.tools.average import recursive_weighted_average_alpha_v
 from nak_torch.tools.types import (
+    DataQuantizationType,
     MSIPEstimatorOutput,
     BatchLogDensityGradVal,
     BatchLogDensity,
     BatchQuadratureRule,
     NAKTarget,
+    NAKTargetData,
 )
 from jaxtyping import Float
 from torch import Tensor
 
-__all__ = ["MSIPFredholm", "MSIPQuadGradientFree", "MSIPQuadGradientInformed"]
+__all__ = [
+    "MSIPDataSqExp",
+    "MSIPFredholm",
+    "MSIPQuadGradientFree",
+    "MSIPQuadGradientInformed",
+]
+
+vmap_recursive_weighted_average_alpha_v = torch.vmap(
+    recursive_weighted_average_alpha_v, in_dims=(0, 0, 0)
+)
 
 
 class MSIPEstimator(NAKTarget[MSIPEstimatorOutput]):
@@ -25,6 +36,35 @@ class MSIPEstimator(NAKTarget[MSIPEstimatorOutput]):
         $$
         """
         ...
+
+
+class MSIPDataSqExp(NAKTargetData[MSIPEstimatorOutput]):
+    r"""
+    Function that returns estimation of $(\log(v_0), sigma^2 * \nabla \log v_0(y)$ from data.
+    Note that
+    $$
+    \sigma^2 \nabla \log v_0(y) = \frac{v_1(y)}{v_0(y)} - y.
+    $$
+    """
+
+    def __init__(self, data: DataQuantizationType, **kwargs):
+        super().__init__(data)
+
+    def __call__(
+        self, particles, kernel_lengthscale, target_args
+    ) -> MSIPEstimatorOutput:
+        N_dataset = self.dataset.shape[0]
+        diffs = (
+            self.dataset[torch.newaxis, :, :] - particles[:, torch.newaxis, :]
+        ) / kernel_lengthscale
+        neg_sq_dists = -torch.sum(torch.square(diffs), dim=2).squeeze() / 2
+        diffs /= kernel_lengthscale
+        # print("\n\n\n", self.dataset.shape, particles.shape, diffs.shape, neg_sq_dists.shape, "\n\n\n")
+        grad_log_v0, log_v0 = vmap_recursive_weighted_average_alpha_v(
+            diffs, torch.ones_like(neg_sq_dists) / N_dataset, neg_sq_dists
+        )
+        sig_sq_grad_log_v0 = grad_log_v0 * torch.square(kernel_lengthscale)
+        return log_v0, sig_sq_grad_log_v0
 
 
 class MSIPFredholm(MSIPEstimator):
@@ -43,11 +83,6 @@ class MSIPFredholm(MSIPEstimator):
         sigma_sq = kernel_lengthscale * kernel_lengthscale
         sigma_sq_log_v0 = grads.mul_(sigma_sq * self.gradient_decay)
         return log_v0, sigma_sq_log_v0
-
-
-vmap_recursive_weighted_average_alpha_v = torch.vmap(
-    recursive_weighted_average_alpha_v, in_dims=(0, 0, 0)
-)
 
 
 class MSIPQuadGradientFree(MSIPEstimator):
